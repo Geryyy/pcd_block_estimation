@@ -6,25 +6,25 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
 
-# # ------------------------------------------------------------
-# # Build type (default: Release)
-# # ------------------------------------------------------------
-# if(NOT CMAKE_BUILD_TYPE)
-#     set(CMAKE_BUILD_TYPE Release CACHE STRING
-#         "Choose the type of build (Release, Debug, RelWithDebInfo, MinSizeRel)"
-#         FORCE)
-# endif()
+# ------------------------------------------------------------
+# Build type (default: Release)
+# ------------------------------------------------------------
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING
+        "Choose the type of build (Release, Debug, RelWithDebInfo, MinSizeRel)"
+        FORCE)
+endif()
 
-# # ------------------------------------------------------------
-# # Native CPU optimizations (Release only)
-# # ------------------------------------------------------------
-# if(CMAKE_BUILD_TYPE STREQUAL "Release")
-#     add_compile_options(
-#         -O3
-#         -march=native
-#         # -ffast-math
-#     )
-# endif()
+# ------------------------------------------------------------
+# Native CPU optimizations (Release only)
+# ------------------------------------------------------------
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_options(
+        -O3
+        -march=native
+        # -ffast-math
+    )
+endif()
 
 # ------------------------------------------------------------
 # Open3D binary location
@@ -61,6 +61,9 @@ message(STATUS "Open3D include dirs: ${Open3D_INCLUDE_DIRS}")
 # ------------------------------------------------------------
 add_library(pcd_pose_utils
     src/utils.cpp
+    src/pose_estimation.cpp
+    src/template_utils.cpp
+    src/yaml_utils.cpp
 )
 
 target_include_directories(pcd_pose_utils
