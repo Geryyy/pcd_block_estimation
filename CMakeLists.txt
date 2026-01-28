@@ -42,6 +42,7 @@ endif()
 find_package(Open3D CONFIG REQUIRED)
 # find_package(yaml-cpp REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(OpenCV REQUIRED)
 
 include(FetchContent)
 
@@ -109,6 +110,27 @@ target_link_libraries(generate_templates
 set_target_properties(generate_templates PROPERTIES
     BUILD_RPATH "${Open3D_ROOT}/lib"
     INSTALL_RPATH "${Open3D_ROOT}/lib"
+)
+
+
+# ------------------------------------------------------------
+# extrat pcl by mask
+# ------------------------------------------------------------
+
+add_executable(extract_pcl_by_mask
+    src/extract_pcl_by_mask.cpp
+)
+
+target_link_libraries(extract_pcl_by_mask
+    PRIVATE
+        Open3D::Open3D
+        yaml-cpp::yaml-cpp
+        ${OpenCV_LIBS}
+)
+
+target_include_directories(extract_pcl_by_mask
+    PRIVATE
+        ${OpenCV_INCLUDE_DIRS}
 )
 
 # ------------------------------------------------------------
