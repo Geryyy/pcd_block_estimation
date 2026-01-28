@@ -65,6 +65,7 @@ add_library(pcd_pose_utils
     src/pose_estimation.cpp
     src/template_utils.cpp
     src/yaml_utils.cpp
+    src/mask_projection.cpp
 )
 
 target_include_directories(pcd_pose_utils
@@ -78,13 +79,14 @@ target_link_libraries(pcd_pose_utils
         Open3D::Open3D
         yaml-cpp::yaml-cpp
         Eigen3::Eigen
+        ${OpenCV_LIBS}
 )
 
 # ------------------------------------------------------------
 # Executable
 # ------------------------------------------------------------
 add_executable(pcd_pose_estimator
-    src/main.cpp
+    src/main_pose_estimator.cpp
 )
 
 target_link_libraries(pcd_pose_estimator
@@ -97,7 +99,7 @@ target_link_libraries(pcd_pose_estimator
 # ------------------------------------------------------------
 
 add_executable(generate_templates
-    src/generate_templates.cpp
+    src/main_generate_templates.cpp
 )
 
 target_link_libraries(generate_templates
@@ -118,7 +120,7 @@ set_target_properties(generate_templates PROPERTIES
 # ------------------------------------------------------------
 
 add_executable(extract_pcl_by_mask
-    src/extract_pcl_by_mask.cpp
+    src/main_extract_pcl_by_mask.cpp
 )
 
 target_link_libraries(extract_pcl_by_mask
@@ -126,9 +128,31 @@ target_link_libraries(extract_pcl_by_mask
         Open3D::Open3D
         yaml-cpp::yaml-cpp
         ${OpenCV_LIBS}
+        pcd_pose_utils
 )
 
 target_include_directories(extract_pcl_by_mask
+    PRIVATE
+        ${OpenCV_INCLUDE_DIRS}
+)
+
+# ------------------------------------------------------------
+# full pipeline: extract pcl and pose estimation
+# ------------------------------------------------------------
+
+add_executable(full_pipeline
+    src/main_full_pipeline.cpp
+)
+
+target_link_libraries(full_pipeline
+    PRIVATE
+        Open3D::Open3D
+        yaml-cpp::yaml-cpp
+        ${OpenCV_LIBS}
+        pcd_pose_utils
+)
+
+target_include_directories(full_pipeline
     PRIVATE
         ${OpenCV_INCLUDE_DIRS}
 )
