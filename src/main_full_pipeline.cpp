@@ -19,213 +19,173 @@ using namespace pcd_block;
 // ------------------------------------------------------------
 // Parameters (hardcoded for now; easy to make CLI / ROS params)
 // ------------------------------------------------------------
-static const std::string PCL_PATH      = "../data/pcl.ply";
-static const std::string MASK_PATH     = "../data/mask.png";
-static const std::string CALIB_YAML    = "../data/calib_zed2i_to_seyond.yaml";
-static const std::string TEMPLATE_DIR  = "../data/templates";
-static const std::string CUTOUT_PLY    = "../data/segmented_concrete_block.ply";
+static const std::string PCL_PATH = "../data/pcl.ply";
+static const std::string MASK_PATH = "../data/mask.png";
+static const std::string CALIB_YAML = "../data/calib_zed2i_to_seyond.yaml";
+static const std::string TEMPLATE_DIR = "../data/templates";
+static const std::string CUTOUT_PLY = "../data/segmented_concrete_block.ply";
 
 constexpr double DIST_THRESH = 0.02;
-constexpr int    MAX_PLANES  = 3;
-constexpr int    MIN_INLIERS = 100;
-constexpr double ICP_DIST    = 0.04;
+constexpr int MAX_PLANES = 3;
+constexpr int MIN_INLIERS = 100;
+constexpr double ICP_DIST = 0.04;
 
 const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
 constexpr double ANGLE_THRESH =
-    std::cos(30.0 * M_PI / 180.0);
+  std::cos(30.0 * M_PI / 180.0);
 
 // ------------------------------------------------------------
 int main()
 {
-    auto t_start = std::chrono::high_resolution_clock::now();
+  auto t_start = std::chrono::high_resolution_clock::now();
 
-    // ========================================================
-    // 1) MASK-BASED POINT CLOUD EXTRACTION
-    // ========================================================
+  // ========================================================
+  // 1) MASK-BASED POINT CLOUD EXTRACTION
+  // ========================================================
 
-    // --------------------------------------------------------
-    // Load mask + compute image center
-    // --------------------------------------------------------
-    cv::Mat mask = cv::imread(MASK_PATH, cv::IMREAD_GRAYSCALE);
-    if (mask.empty())
-        throw std::runtime_error("Failed to load mask");
+  // --------------------------------------------------------
+  // Load mask + compute image center
+  // --------------------------------------------------------
+  cv::Mat mask = cv::imread(MASK_PATH, cv::IMREAD_GRAYSCALE);
+  if (mask.empty()) {
+    throw std::runtime_error("Failed to load mask");
+  }
 
-    Eigen::Vector2i uv_center = mask_center_uv(mask);
-    std::cout << "Mask center (u,v): "
-              << uv_center.transpose() << std::endl;
+  Eigen::Vector2i uv_center = mask_center_uv(mask);
+  std::cout << "Mask center (u,v): "
+            << uv_center.transpose() << std::endl;
 
-    // --------------------------------------------------------
-    // Load calibration
-    // --------------------------------------------------------
-    YAML::Node calib = YAML::LoadFile(CALIB_YAML);
+  // --------------------------------------------------------
+  // Load calibration
+  // --------------------------------------------------------
+  YAML::Node calib = YAML::LoadFile(CALIB_YAML);
 
-    Eigen::Matrix3d K;
-    for (int i = 0; i < 9; ++i)
-        K(i / 3, i % 3) = calib["K"][i].as<double>();
+  Eigen::Matrix3d K;
+  for (int i = 0; i < 9; ++i) {
+    K(i / 3, i % 3) = calib["K"][i].as<double>();
+  }
 
-    Eigen::Matrix4d T_P_C = load_T_4x4(CALIB_YAML);
+  Eigen::Matrix4d T_P_C = load_T_4x4(CALIB_YAML);
 
-    // --------------------------------------------------------
-    // Load raw point cloud
-    // --------------------------------------------------------
-    auto pcd_raw = std::make_shared<geometry::PointCloud>();
-    if (!io::ReadPointCloud(PCL_PATH, *pcd_raw) || pcd_raw->IsEmpty())
-        throw std::runtime_error("Failed to load raw point cloud");
+  // --------------------------------------------------------
+  // Load raw point cloud
+  // --------------------------------------------------------
+  auto pcd_raw = std::make_shared<geometry::PointCloud>();
+  if (!io::ReadPointCloud(PCL_PATH, *pcd_raw) || pcd_raw->IsEmpty()) {
+    throw std::runtime_error("Failed to load raw point cloud");
+  }
 
-    std::cout << "Loaded raw cloud with "
-              << pcd_raw->points_.size() << " points\n";
+  std::cout << "Loaded raw cloud with "
+            << pcd_raw->points_.size() << " points\n";
 
-    // --------------------------------------------------------
-    // Mask-based cutout
-    // --------------------------------------------------------
-    auto pts_sel = select_points_by_mask(
-        pcd_raw->points_, mask, K, T_P_C);
+  // --------------------------------------------------------
+  // Mask-based cutout
+  // --------------------------------------------------------
+  auto pts_sel = select_points_by_mask(
+    pcd_raw->points_, mask, K, T_P_C);
 
-    if (pts_sel.empty())
-        throw std::runtime_error("Mask-based cutout produced empty cloud");
+  if (pts_sel.empty()) {
+    throw std::runtime_error("Mask-based cutout produced empty cloud");
+  }
 
-    std::cout << "Selected " << pts_sel.size()
-              << " points inside mask\n";
+  std::cout << "Selected " << pts_sel.size()
+            << " points inside mask\n";
 
-    // --------------------------------------------------------
-    // Save cutout for debugging / reuse
-    // --------------------------------------------------------
-    auto pcd_cutout = std::make_shared<geometry::PointCloud>();
-    pcd_cutout->points_ = pts_sel;
-    io::WritePointCloud(CUTOUT_PLY, *pcd_cutout);
+  // --------------------------------------------------------
+  // Save cutout for debugging / reuse
+  // --------------------------------------------------------
+  auto pcd_cutout = std::make_shared<geometry::PointCloud>();
+  pcd_cutout->points_ = pts_sel;
+  io::WritePointCloud(CUTOUT_PLY, *pcd_cutout);
 
-    Eigen::Vector3d cutout_center = compute_center(pts_sel);
-    std::cout << "Cutout centroid (x,y,z): "
-              << cutout_center.transpose() << std::endl;
+  Eigen::Vector3d cutout_center = compute_center(pts_sel);
+  std::cout << "Cutout centroid (x,y,z): "
+            << cutout_center.transpose() << std::endl;
 
-    // ========================================================
-    // 2) POSE ESTIMATION ON CUTOUT
-    // ========================================================
+  // ========================================================
+  // 2) POSE ESTIMATION ON CUTOUT
+  // ========================================================
 
-    // --------------------------------------------------------
-    // Camera pitch compensation + frame alignment
-    // --------------------------------------------------------
-    Eigen::Matrix4d T_lidar_cam = T_P_C;
-    Eigen::Matrix4d T_cam_lidar = T_lidar_cam.inverse();
+  // --------------------------------------------------------
+  // Camera pitch compensation + frame alignment
+  // --------------------------------------------------------
+  Eigen::Matrix4d T_lidar_cam = T_P_C;
+  Eigen::Matrix4d T_cam_lidar = T_lidar_cam.inverse();
 
-    Eigen::Matrix4d T_pitch = Eigen::Matrix4d::Identity();
-    T_pitch.block<3,3>(0,0) =
-        geometry::Geometry3D::GetRotationMatrixFromXYZ(
-            Eigen::Vector3d(-M_PI / 6.0, 0, 0));
+  Eigen::Matrix4d T_pitch = Eigen::Matrix4d::Identity();
+  T_pitch.block<3, 3>(0, 0) =
+    geometry::Geometry3D::GetRotationMatrixFromXYZ(
+    Eigen::Vector3d(-M_PI / 6.0, 0, 0));
 
-    pcd_cutout->RemoveStatisticalOutliers(20, 2.0);
-    pcd_cutout->Transform(T_pitch * T_cam_lidar);
-    pcd_cutout->RemoveStatisticalOutliers(20, 2.0);
-    pcd_cutout->EstimateNormals();
+  pcd_cutout->RemoveStatisticalOutliers(20, 2.0);
+  pcd_cutout->Transform(T_pitch * T_cam_lidar);
+  pcd_cutout->RemoveStatisticalOutliers(20, 2.0);
+  pcd_cutout->EstimateNormals();
 
-    Eigen::Vector3d scene_center = compute_center(*pcd_cutout);
+  GlobalRegistrationResult globreg_result = compute_global_registration(
+    *pcd_cutout,
+    Z_WORLD,
+    ANGLE_THRESH,
+    MAX_PLANES,
+    DIST_THRESH,
+    MIN_INLIERS
+  );
 
-    // --------------------------------------------------------
-    // Plane extraction
-    // --------------------------------------------------------
-    auto planes = extract_planes(
-        *pcd_cutout, MAX_PLANES, DIST_THRESH, MIN_INLIERS);
+  // --------------------------------------------------------
+  // Load templates
+  // --------------------------------------------------------
+  auto templates = load_templates(TEMPLATE_DIR);
+  if (templates.empty()) {
+    throw std::runtime_error("No templates loaded");
+  }
 
-    if (planes.empty())
-        throw std::runtime_error("No planes detected in cutout");
+  // --------------------------------------------------------
+  // Pose estimation (ICP yaw sweep)
+  // --------------------------------------------------------
+  LocalRegistrationResult result = compute_local_registration(
+    *pcd_cutout,
+    templates,
+    globreg_result,
+    ICP_DIST,
+    30       // yaw step [deg]
+  );
 
-    std::cout << "Detected planes: " << planes.size() << std::endl;
+  auto t_end = std::chrono::high_resolution_clock::now();
 
-    // --------------------------------------------------------
-    // Find top plane normal
-    // --------------------------------------------------------
-    Eigen::Vector3d n_top;
-    bool found = false;
+  // ========================================================
+  // REPORT + VISUALIZATION
+  // ========================================================
 
-    for (const auto &[plane, pc] : planes) {
-        Eigen::Vector3d n = plane.head<3>().normalized();
-        if (n.dot(Z_WORLD) < 0.0)
-            n = -n;
+  std::cout << "\nBest template : " << result.template_name << "\n";
+  std::cout << "Best yaw      : " << result.yaw_deg << " deg\n";
+  std::cout << "Template idx  : " << result.template_index << "\n";
+  std::cout << "Fitness       : " << result.icp.fitness_ << "\n";
+  std::cout << "RMSE          : " << result.icp.inlier_rmse_ << "\n";
 
-        if (std::abs(n.dot(Z_WORLD)) > ANGLE_THRESH) {
-            n_top = n;
-            found = true;
-            break;
-        }
-    }
+  std::cout << "Total execution time: "
+            << std::chrono::duration<double, std::milli>(
+    t_end - t_start).count()
+            << " ms\n";
 
-    if (!found)
-        throw std::runtime_error("Top plane not detected");
+  // --------------------------------------------------------
+  // Visualization
+  // --------------------------------------------------------
+  auto best_vis =
+    std::make_shared<geometry::PointCloud>(
+    *templates[result.template_index].pcd);
 
-    // --------------------------------------------------------
-    // Build base frame (roll/pitch fixed, yaw free)
-    // --------------------------------------------------------
-    Eigen::Vector3d z_cam = n_top.normalized();
-    Eigen::Vector3d tmp(1.0, 0.0, 0.0);
-    if (std::abs(tmp.dot(z_cam)) > 0.9)
-        tmp = Eigen::Vector3d(0.0, 1.0, 0.0);
+  best_vis->Transform(result.icp.transformation_);
+  best_vis->PaintUniformColor({0.0, 1.0, 0.0});
 
-    Eigen::Vector3d x_base =
-        (tmp - tmp.dot(z_cam) * z_cam).normalized();
-    Eigen::Vector3d y_base =
-        z_cam.cross(x_base).normalized();
+  auto frame =
+    geometry::TriangleMesh::CreateCoordinateFrame(0.3);
+  frame->Transform(result.icp.transformation_);
 
-    Eigen::Matrix3d R_base;
-    R_base.col(0) = x_base;
-    R_base.col(1) = y_base;
-    R_base.col(2) = z_cam;
+  visualization::DrawGeometries(
+    {pcd_cutout, best_vis, frame},
+    "Mask → Pose Estimation Pipeline",
+    1200, 900
+  );
 
-    // --------------------------------------------------------
-    // Load templates
-    // --------------------------------------------------------
-    auto templates = load_templates(TEMPLATE_DIR);
-    if (templates.empty())
-        throw std::runtime_error("No templates loaded");
-
-    // --------------------------------------------------------
-    // Pose estimation (ICP yaw sweep)
-    // --------------------------------------------------------
-    PoseResult result = estimate_pose(
-        *pcd_cutout,
-        templates,
-        R_base,
-        scene_center,
-        static_cast<int>(planes.size()),
-        ICP_DIST,
-        30   // yaw step [deg]
-    );
-
-    auto t_end = std::chrono::high_resolution_clock::now();
-
-    // ========================================================
-    // REPORT + VISUALIZATION
-    // ========================================================
-
-    std::cout << "\nBest template : " << result.template_name << "\n";
-    std::cout << "Best yaw      : " << result.yaw_deg << " deg\n";
-    std::cout << "Template idx  : " << result.template_index << "\n";
-    std::cout << "Fitness       : " << result.icp.fitness_ << "\n";
-    std::cout << "RMSE          : " << result.icp.inlier_rmse_ << "\n";
-
-    std::cout << "Total execution time: "
-              << std::chrono::duration<double, std::milli>(
-                     t_end - t_start).count()
-              << " ms\n";
-
-    // --------------------------------------------------------
-    // Visualization
-    // --------------------------------------------------------
-    auto best_vis =
-        std::make_shared<geometry::PointCloud>(
-            *templates[result.template_index].pcd);
-
-    best_vis->Transform(result.icp.transformation_);
-    best_vis->PaintUniformColor({0.0, 1.0, 0.0});
-
-    auto frame =
-        geometry::TriangleMesh::CreateCoordinateFrame(0.3);
-    frame->Transform(result.icp.transformation_);
-
-    visualization::DrawGeometries(
-        {pcd_cutout, best_vis, frame},
-        "Mask → Pose Estimation Pipeline",
-        1200, 900
-    );
-
-    return 0;
+  return 0;
 }
