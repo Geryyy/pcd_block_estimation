@@ -6,7 +6,7 @@
 
 namespace pcd_block {
 
-/**
+    /**
  * @brief Select point cloud points whose image projections fall inside a mask.
  *
  * Frames:

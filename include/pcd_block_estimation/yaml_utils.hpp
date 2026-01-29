@@ -2,8 +2,10 @@
 #include <Eigen/Dense>
 #include <string>
 
-namespace pcd_block {
+namespace pcd_block
+{
 
-Eigen::Matrix4d load_T_4x4(const std::string &yaml_path);
+Eigen::Matrix4d load_T_4x4(const std::string & yaml_path);
+Eigen::Matrix3d load_camera_matrix(const std::string & path);
 
 }

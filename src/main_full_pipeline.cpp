@@ -6,6 +6,8 @@
 #include <iostream>
 #include <chrono>
 
+// #include "Timer.h"
+
 // library headers
 #include "pcd_block_estimation/yaml_utils.hpp"
 #include "pcd_block_estimation/utils.hpp"
@@ -38,6 +40,7 @@ constexpr double ANGLE_THRESH =
 int main()
 {
   auto t_start = std::chrono::high_resolution_clock::now();
+
 
   // ========================================================
   // 1) MASK-BASED POINT CLOUD EXTRACTION
@@ -78,6 +81,7 @@ int main()
   std::cout << "Loaded raw cloud with "
             << pcd_raw->points_.size() << " points\n";
 
+  auto t_start2 = std::chrono::high_resolution_clock::now();
   // --------------------------------------------------------
   // Mask-based cutout
   // --------------------------------------------------------
@@ -102,6 +106,11 @@ int main()
   std::cout << "Cutout centroid (x,y,z): "
             << cutout_center.transpose() << std::endl;
 
+    auto t_end2 = std::chrono::high_resolution_clock::now();
+    std::cout << "Coarse center computation time: "
+            << std::chrono::duration<double, std::milli>(
+    t_end2 - t_start2).count()
+            << " ms\n";
   // ========================================================
   // 2) POSE ESTIMATION ON CUTOUT
   // ========================================================
