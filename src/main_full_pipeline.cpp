@@ -23,6 +23,8 @@ using namespace pcd_block;
 // ------------------------------------------------------------
 static const std::string PCL_PATH = "../data/pcl.ply";
 static const std::string MASK_PATH = "../data/mask.png";
+// static const std::string PCL_PATH = "../data/scene_1765975331_195477760.ply";
+// static const std::string MASK_PATH = "../data/full_mask_1765975331_195477760.png";
 static const std::string CALIB_YAML = "../data/calib_zed2i_to_seyond.yaml";
 static const std::string TEMPLATE_DIR = "../data/templates";
 static const std::string CUTOUT_PLY = "../data/segmented_concrete_block.ply";
@@ -106,8 +108,8 @@ int main()
   std::cout << "Cutout centroid (x,y,z): "
             << cutout_center.transpose() << std::endl;
 
-    auto t_end2 = std::chrono::high_resolution_clock::now();
-    std::cout << "Coarse center computation time: "
+  auto t_end2 = std::chrono::high_resolution_clock::now();
+  std::cout << "Coarse center computation time: "
             << std::chrono::duration<double, std::milli>(
     t_end2 - t_start2).count()
             << " ms\n";
