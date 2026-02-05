@@ -40,4 +40,19 @@ LocalRegistrationResult compute_local_registration(
   int yaw_step_deg
 );
 
+Eigen::Matrix4d
+globalResultToTransform(const GlobalRegistrationResult & glob)
+{
+  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+
+  if (!glob.success) {
+    return T;
+  }
+
+  T.block<3, 3>(0, 0) = glob.R_base;
+  T.block<3, 1>(0, 3) = glob.center;
+
+  return T;
+}
+
 }
