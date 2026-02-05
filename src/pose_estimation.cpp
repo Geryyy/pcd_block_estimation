@@ -34,12 +34,16 @@ GlobalRegistrationResult compute_global_registration(
   result.num_planes = planes.size();
 
   // --------------------------------------------------------
-  // Find top plane normal
+  // Find top plane normal and store plane points
   // --------------------------------------------------------
+  auto plane_cloud = std::make_shared<geometry::PointCloud>();
+
   Eigen::Vector3d n_top;
   bool found = false;
 
   for (const auto & [plane, pc] : planes) {
+    *plane_cloud += pc;   // concatenate inliers
+
     Eigen::Vector3d n = plane.head<3>().normalized();
     if (n.dot(Z_WORLD) < 0.0) {
       n = -n;
@@ -51,6 +55,8 @@ GlobalRegistrationResult compute_global_registration(
       break;
     }
   }
+
+  result.plane_cloud = plane_cloud;
 
   if (!found) {
     std::cerr << "Top plane not detected" << std::endl;
@@ -133,5 +139,20 @@ LocalRegistrationResult compute_local_registration(
   return best;
 }
 
+
+Eigen::Matrix4d
+globalResultToTransform(const GlobalRegistrationResult & glob)
+{
+  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+
+  if (!glob.success) {
+    return T;
+  }
+
+  T.block<3, 3>(0, 0) = glob.R_base;
+  T.block<3, 1>(0, 3) = glob.center;
+
+  return T;
+}
 
 }

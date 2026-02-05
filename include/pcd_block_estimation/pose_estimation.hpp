@@ -11,6 +11,8 @@ struct GlobalRegistrationResult
   Eigen::Vector3d center;     // scene centroid
   Eigen::Matrix3d R_base;     // roll/pitch fixed, yaw free
   int num_planes;
+
+  std::shared_ptr<open3d::geometry::PointCloud> plane_cloud;
 };
 
 GlobalRegistrationResult compute_global_registration(
@@ -41,18 +43,6 @@ LocalRegistrationResult compute_local_registration(
 );
 
 Eigen::Matrix4d
-globalResultToTransform(const GlobalRegistrationResult & glob)
-{
-  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-
-  if (!glob.success) {
-    return T;
-  }
-
-  T.block<3, 3>(0, 0) = glob.R_base;
-  T.block<3, 1>(0, 3) = glob.center;
-
-  return T;
-}
+globalResultToTransform(const GlobalRegistrationResult & glob);
 
 }

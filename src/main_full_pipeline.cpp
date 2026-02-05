@@ -150,11 +150,16 @@ int main()
     throw std::runtime_error("No templates loaded");
   }
 
+
+  const auto & icp_scene =
+    globreg_result.plane_cloud ?
+    globreg_result.plane_cloud :
+    pcd_cutout;
   // --------------------------------------------------------
   // Pose estimation (ICP yaw sweep)
   // --------------------------------------------------------
   LocalRegistrationResult result = compute_local_registration(
-    *pcd_cutout,
+    *icp_scene,
     templates,
     globreg_result,
     ICP_DIST,
@@ -193,7 +198,7 @@ int main()
   frame->Transform(result.icp.transformation_);
 
   visualization::DrawGeometries(
-    {pcd_cutout, best_vis, frame},
+    {icp_scene, best_vis, frame},
     "Mask → Pose Estimation Pipeline",
     1200, 900
   );
