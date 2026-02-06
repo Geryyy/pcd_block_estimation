@@ -13,20 +13,32 @@ namespace pcd_block
 {
 
 // ------------------------------------------------------------
-// Data structures
+// Canonical face normals (CAD frame)
+// ------------------------------------------------------------
+extern const std::map<std::string, Eigen::Vector3d> FACE_NORMALS;
+
+// ------------------------------------------------------------
+// Template metadata (RUNTIME)
 // ------------------------------------------------------------
 struct TemplateData
 {
   std::string name;
   std::shared_ptr<open3d::geometry::PointCloud> pcd;
-  int num_faces;
-};
 
-// ------------------------------------------------------------
-// Face definitions
-// ------------------------------------------------------------
-extern const std::map<std::string, Eigen::Vector3d> FACE_NORMALS;
-extern const std::map<std::string, std::vector<std::string>> TEMPLATES;
+  // semantic info
+  int num_faces = 0;
+  std::vector<std::string> face_names;
+
+  // canonical normals (CAD frame)
+  Eigen::Vector3d normal_top;    // +Z
+  Eigen::Vector3d normal_short;  // +X
+  Eigen::Vector3d normal_long;   // +Y
+
+  // canonical face centers (CAD frame)
+  Eigen::Vector3d center_top;
+  Eigen::Vector3d center_short;
+  Eigen::Vector3d center_long;
+};
 
 // ------------------------------------------------------------
 // Template generation params
@@ -40,7 +52,7 @@ struct TemplateGenerationParams
 };
 
 // ------------------------------------------------------------
-// Core functionality
+// Template generation
 // ------------------------------------------------------------
 std::shared_ptr<open3d::geometry::PointCloud>
 sample_pointcloud_from_mesh(
@@ -50,28 +62,17 @@ sample_pointcloud_from_mesh(
 void ensure_outward_normals(
   open3d::geometry::PointCloud & pcd);
 
-bool normal_matches_faces(
-  const Eigen::Vector3d & n,
-  const std::vector<std::string> & faces,
-  double cos_thresh);
-
 std::shared_ptr<open3d::geometry::PointCloud>
 extract_template(
   const open3d::geometry::PointCloud & pcd,
   const std::vector<std::string> & faces,
   double angle_deg);
 
-void write_template(
-  const std::string & out_dir,
-  const std::string & name,
-  const open3d::geometry::PointCloud & pcd,
-  const std::vector<std::string> & faces);
-
 void generate_templates(
   const TemplateGenerationParams & params);
 
 // ------------------------------------------------------------
-// Existing API (unchanged)
+// Loader (runtime)
 // ------------------------------------------------------------
 std::vector<TemplateData>
 load_templates(const std::string & directory);

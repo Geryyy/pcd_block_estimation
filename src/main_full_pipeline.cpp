@@ -37,6 +37,7 @@ constexpr double ICP_DIST = 0.04;
 const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
 constexpr double ANGLE_THRESH =
   std::cos(30.0 * M_PI / 180.0);
+constexpr double MAX_PLANE_CENTER_DIST = 0.6; // meters
 
 // ------------------------------------------------------------
 int main()
@@ -139,7 +140,8 @@ int main()
     ANGLE_THRESH,
     MAX_PLANES,
     DIST_THRESH,
-    MIN_INLIERS
+    MIN_INLIERS,
+    MAX_PLANE_CENTER_DIST
   );
 
   // --------------------------------------------------------
@@ -158,13 +160,13 @@ int main()
   // --------------------------------------------------------
   // Pose estimation (ICP yaw sweep)
   // --------------------------------------------------------
-  LocalRegistrationResult result = compute_local_registration(
-    *icp_scene,
-    templates,
-    globreg_result,
-    ICP_DIST,
-    30       // yaw step [deg]
-  );
+  LocalRegistrationResult result =
+    compute_local_registration(
+      *icp_scene,
+      templates,
+      globreg_result,
+      ICP_DIST
+    );
 
   auto t_end = std::chrono::high_resolution_clock::now();
 
@@ -173,7 +175,6 @@ int main()
   // ========================================================
 
   std::cout << "\nBest template : " << result.template_name << "\n";
-  std::cout << "Best yaw      : " << result.yaw_deg << " deg\n";
   std::cout << "Template idx  : " << result.template_index << "\n";
   std::cout << "Fitness       : " << result.icp.fitness_ << "\n";
   std::cout << "RMSE          : " << result.icp.inlier_rmse_ << "\n";

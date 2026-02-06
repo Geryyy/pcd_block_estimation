@@ -12,13 +12,13 @@ namespace pcd_block
 {
 
 // ------------------------------------------------------------
-// Face normals (canonical object frame)
+// Canonical face normals (CAD frame)
 // ------------------------------------------------------------
 const std::map<std::string, Eigen::Vector3d> FACE_NORMALS = {
-  {"top", {0, 0, 1}},
-  {"front", {1, 0, 0}},
-  {"right", {0, 1, 0}},
-  {"left", {0, -1, 0}},
+  {"top",   {0.0, 0.0, 1.0}},
+  {"front", {1.0, 0.0, 0.0}},  // short side
+  {"right", {0.0, 1.0, 0.0}},  // long side
+  {"left",  {0.0,-1.0, 0.0}}
 };
 
 // ------------------------------------------------------------
@@ -28,9 +28,9 @@ const std::map<std::string, std::vector<std::string>> TEMPLATES = {
   {"top", {"top"}},
 
   {"top_front_short", {"top", "front"}},
-  {"top_front_long", {"top", "right"}},
+  {"top_front_long",  {"top", "right"}},
 
-  {"top_front_short_left", {"top", "front", "left"}},
+  {"top_front_short_left",  {"top", "front", "left"}},
   {"top_front_short_right", {"top", "front", "right"}},
 };
 
@@ -46,8 +46,8 @@ sample_pointcloud_from_mesh(
   }
 
   mesh->ComputeVertexNormals();
-
   auto pcd = mesh->SamplePointsPoissonDisk(n_points);
+
   if (!pcd || pcd->IsEmpty()) {
     throw std::runtime_error("Poisson disk sampling failed");
   }
@@ -59,29 +59,26 @@ sample_pointcloud_from_mesh(
 void ensure_outward_normals(geometry::PointCloud & pcd)
 {
   Eigen::Vector3d center = Eigen::Vector3d::Zero();
-  for (const auto & p : pcd.points_) {
+  for (const auto & p : pcd.points_)
     center += p;
-  }
   center /= static_cast<double>(pcd.points_.size());
 
   for (size_t i = 0; i < pcd.normals_.size(); ++i) {
-    if (pcd.normals_[i].dot(pcd.points_[i] - center) < 0.0) {
+    if (pcd.normals_[i].dot(pcd.points_[i] - center) < 0.0)
       pcd.normals_[i] *= -1.0;
-    }
   }
 }
 
 // ------------------------------------------------------------
-bool normal_matches_faces(
+static bool normal_matches_faces(
   const Eigen::Vector3d & n,
   const std::vector<std::string> & faces,
   double cos_thresh)
 {
   for (const auto & f : faces) {
     const auto & fn = FACE_NORMALS.at(f);
-    if (n.dot(fn) > cos_thresh) {
+    if (n.dot(fn) > cos_thresh)
       return true;
-    }
   }
   return false;
 }
@@ -94,9 +91,7 @@ extract_template(
   double angle_deg)
 {
   auto out = std::make_shared<geometry::PointCloud>();
-
-  const double cos_thresh =
-    std::cos(angle_deg * M_PI / 180.0);
+  const double cos_thresh = std::cos(angle_deg * M_PI / 180.0);
 
   for (size_t i = 0; i < pcd.points_.size(); ++i) {
     if (normal_matches_faces(pcd.normals_[i], faces, cos_thresh)) {
@@ -117,7 +112,6 @@ void write_template(
 {
   fs::create_directories(out_dir);
 
-  io::WritePointCloud(out_dir + "/" + name + ".pcd", pcd);
   io::WritePointCloud(out_dir + "/" + name + ".ply", pcd, false);
 
   YAML::Node meta;
@@ -166,7 +160,7 @@ void generate_templates(const TemplateGenerationParams & params)
 }
 
 // ------------------------------------------------------------
-// Existing loader (unchanged)
+// Runtime loader
 // ------------------------------------------------------------
 std::vector<TemplateData>
 load_templates(const std::string & dir)
@@ -174,25 +168,39 @@ load_templates(const std::string & dir)
   std::vector<TemplateData> out;
 
   for (const auto & f : fs::directory_iterator(dir)) {
-    if (f.path().extension() != ".ply") {continue;}
 
-    auto yaml = f.path();
-    yaml.replace_extension(".yaml");
-    if (!fs::exists(yaml)) {continue;}
+    if (f.path().extension() != ".ply")
+      continue;
 
-    YAML::Node meta = YAML::LoadFile(yaml.string());
+    fs::path yaml_path = f.path();
+    yaml_path.replace_extension(".yaml");
+    if (!fs::exists(yaml_path))
+      continue;
+
+    YAML::Node meta = YAML::LoadFile(yaml_path.string());
 
     auto pcd = std::make_shared<geometry::PointCloud>();
     io::ReadPointCloud(f.path().string(), *pcd);
     pcd->EstimateNormals();
 
-    out.push_back(
-      {
-        f.path().stem().string(),
-        pcd,
-        meta["num_faces"].as<int>()
-      });
+    TemplateData tpl;
+    tpl.name = f.path().stem().string();
+    tpl.pcd  = pcd;
+    tpl.num_faces = meta["num_faces"].as<int>();
+
+    for (const auto & fnode : meta["faces"]) {
+      tpl.face_names.push_back(
+        fnode["name"].as<std::string>());
+    }
+
+    // canonical normals (fixed by CAD)
+    tpl.normal_top   = Eigen::Vector3d(0, 0, 1);
+    tpl.normal_short = Eigen::Vector3d(1, 0, 0);
+    tpl.normal_long  = Eigen::Vector3d(0, 1, 0);
+
+    out.push_back(tpl);
   }
+
   return out;
 }
 
