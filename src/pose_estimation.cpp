@@ -32,6 +32,7 @@ GlobalRegistrationResult compute_global_registration(
   }
 
   result.num_planes = planes.size();
+  result.planes = planes;
 
   // --------------------------------------------------------
   // Find top plane normal and store plane points

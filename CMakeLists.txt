@@ -58,4 +58,7 @@ if(PCD_BLOCK_ESTIMATION_BUILD_TOOLS)
 
     add_executable(full_pipeline src/main_full_pipeline.cpp)
     target_link_libraries(full_pipeline PRIVATE pcd_block_estimation)
+
+    add_executable(dump_processing src/main_dump_processing.cpp)
+    target_link_libraries(dump_processing PRIVATE pcd_block_estimation)
 endif()

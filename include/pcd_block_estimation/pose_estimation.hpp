@@ -11,6 +11,7 @@ struct GlobalRegistrationResult
   Eigen::Vector3d center;     // scene centroid
   Eigen::Matrix3d R_base;     // roll/pitch fixed, yaw free
   int num_planes;
+  std::vector<std::pair<Eigen::Vector4d, open3d::geometry::PointCloud>> planes;
 
   std::shared_ptr<open3d::geometry::PointCloud> plane_cloud;
 };
