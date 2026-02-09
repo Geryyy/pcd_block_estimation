@@ -283,9 +283,9 @@ int main()
       std::make_shared<geometry::PointCloud>();
     pcd_cutout->points_ = pts_sel;
 
-    pcd_cutout->RemoveStatisticalOutliers(20,2.0);
+    // pcd_cutout->RemoveStatisticalOutliers(50,2.0);
     pcd_cutout->Transform(T_pitch * T_cam_lidar);
-    pcd_cutout->RemoveStatisticalOutliers(20,2.0);
+    // pcd_cutout->RemoveStatisticalOutliers(20,2.0);
     pcd_cutout->EstimateNormals();
 
     // --------------------------------------------------------
@@ -360,12 +360,12 @@ int main()
       continue;
     }
 
-    std::cout << "[RESULT] template = "
+    std::cout << "[RESULT] template["<<result.template_index<<"]= "
               << result.template_name << "\n";
-    std::cout << "         front_plane = "
-              << result.front_plane_index << "\n";
-    std::cout << "         face = "
-              << (result.face_index==0?"LONG":"SHORT") << "\n";
+    // std::cout << "         front_plane = "
+              // << result.front_plane_index << "\n";
+    // std::cout << "         face = "
+              // << (result.face_index==0?"LONG":"SHORT") << "\n";
     std::cout << "         fitness = "
               << result.icp.fitness_ << "\n";
     std::cout << "         rmse = "

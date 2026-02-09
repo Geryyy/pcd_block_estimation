@@ -6,6 +6,7 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <string>
+#include <limits>
 
 namespace pcd_block
 {
@@ -57,10 +58,20 @@ GlobalRegistrationResult compute_global_registration(
 // Local registration result (ICP refinement)
 // ============================================================
 
+constexpr double DEG2RAD = M_PI / 180.0;
+
+struct HypothesisScore
+{
+  double geom = 0.0;   // plane compatibility
+  double icp  = 0.0;   // ICP fitness
+  double total = 0.0;
+};
+
+
 struct LocalRegistrationResult
 {
   bool success = false;
-
+  double score = -std::numeric_limits<double>::infinity();
   std::string template_name;
   int template_index = -1;
 
@@ -88,3 +99,4 @@ Eigen::Matrix4d
 globalResultToTransform(const GlobalRegistrationResult & glob);
 
 } // namespace pcd_block
+
