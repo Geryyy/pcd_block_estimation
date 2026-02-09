@@ -26,6 +26,121 @@ plane_normal_oriented(
   return n;
 }
 
+inline Eigen::Vector3d closest_point_between_lines(
+  const Eigen::Vector3d & c1,
+  const Eigen::Vector3d & n1,
+  const Eigen::Vector3d & c2,
+  const Eigen::Vector3d & n2)
+{
+  Eigen::Vector3d r = c1 - c2;
+
+  double a = n1.dot(n1);
+  double b = n1.dot(n2);
+  double c = n2.dot(n2);
+  double d = n1.dot(r);
+  double e = n2.dot(r);
+
+  double denom = a * c - b * b;
+  if (std::abs(denom) < 1e-6) {
+    // Lines almost parallel → fallback to average
+    return 0.5 * (c1 + c2);
+  }
+
+  double t = (b * e - c * d) / denom;
+  double s = (a * e - b * d) / denom;
+
+  Eigen::Vector3d p1 = c1 + t * n1;
+  Eigen::Vector3d p2 = c2 + s * n2;
+
+  return 0.5 * (p1 + p2);
+}
+
+inline Eigen::Matrix3d build_frame_from_planes(
+  const Eigen::Vector3d & n_top,
+  const Eigen::Vector3d & n_front)
+{
+  Eigen::Vector3d n_z = n_top.normalized();
+
+  // Project front normal into horizontal plane
+  Eigen::Vector3d n_x =
+    (n_front - n_front.dot(n_z) * n_z).normalized();
+
+  Eigen::Vector3d n_y = n_z.cross(n_x).normalized();
+
+  Eigen::Matrix3d R;
+  R.col(0) = n_x;
+  R.col(1) = n_y;
+  R.col(2) = n_z;
+  return R;
+}
+
+struct PlaneSelection
+{
+  Eigen::Vector3d n_top, c_top;
+  Eigen::Vector3d n_front, c_front;
+  bool success = false;
+};
+
+PlaneSelection select_top_and_front_planes(
+  const std::vector<std::pair<Eigen::Vector4d,
+                              geometry::PointCloud>> & planes,
+  const Eigen::Vector3d & z_world,
+  double angle_thresh,
+  double max_plane_center_dist)
+{
+  PlaneSelection sel;
+
+  bool found_top = false;
+  struct Candidate {
+    Eigen::Vector3d n;
+    Eigen::Vector3d c;
+    size_t support;
+  };
+  std::vector<Candidate> fronts;
+
+  for (const auto & [plane, pc] : planes) {
+    Eigen::Vector3d n =
+      plane_normal_oriented(plane, z_world);
+    Eigen::Vector3d c = compute_center(pc);
+
+    double cos_z = std::abs(n.dot(z_world));
+
+    if (!found_top && cos_z > angle_thresh) {
+      sel.n_top = n;
+      sel.c_top = c;
+      found_top = true;
+      continue;
+    }
+
+    if (cos_z < 0.2) {
+      fronts.push_back({n, c, pc.points_.size()});
+    }
+  }
+
+  if (!found_top || fronts.empty())
+    return sel;
+
+  // Sort by support
+  std::sort(fronts.begin(), fronts.end(),
+            [](auto & a, auto & b) {
+              return a.support > b.support;
+            });
+
+  // Distance gating
+  for (const auto & fc : fronts) {
+    if ((fc.c - sel.c_top).norm() < max_plane_center_dist) {
+      sel.n_front = fc.n;
+      sel.c_front = fc.c;
+      sel.success = true;
+      return sel;
+    }
+  }
+
+  return sel;
+}
+
+
+
 
 // ============================================================
 // GLOBAL REGISTRATION
@@ -43,7 +158,7 @@ GlobalRegistrationResult compute_global_registration(
   GlobalRegistrationResult out;
 
   // ----------------------------------------------------------
-  // Scene centroid
+  // Scene centroid (debug / sanity)
   // ----------------------------------------------------------
   out.center = compute_center(scene);
 
@@ -51,7 +166,8 @@ GlobalRegistrationResult compute_global_registration(
   // Plane extraction
   // ----------------------------------------------------------
   out.planes =
-    extract_planes(scene, max_planes, dist_thresh, min_inliers);
+    extract_planes(scene, max_planes,
+                   dist_thresh, min_inliers);
 
   if (out.planes.empty()) {
     std::cerr << "[globreg] no planes detected\n";
@@ -60,136 +176,43 @@ GlobalRegistrationResult compute_global_registration(
 
   out.num_planes = static_cast<int>(out.planes.size());
 
-  // Concatenate plane inliers
-  out.plane_cloud = std::make_shared<geometry::PointCloud>();
-  for (const auto & [_, pc] : out.planes)
-    *out.plane_cloud += pc;
-
   // ----------------------------------------------------------
-  // Identify top + front candidates
+  // Select planes
   // ----------------------------------------------------------
-  bool found_top = false;
+  auto sel = select_top_and_front_planes(
+    out.planes, z_world,
+    angle_thresh, max_plane_center_dist);
 
-  struct FrontCandidate {
-    Eigen::Vector3d n;
-    Eigen::Vector3d c;
-    size_t support;
-  };
-
-  std::vector<FrontCandidate> front_candidates;
-
-  for (const auto & [plane, pc] : out.planes) {
-
-    Eigen::Vector3d n =
-      plane_normal_oriented(plane, z_world);
-    Eigen::Vector3d c = compute_center(pc);
-
-    double cos_to_z = std::abs(n.dot(z_world));
-
-    // ----------------------------
-    // Top plane
-    // ----------------------------
-    if (!found_top && cos_to_z > angle_thresh) {
-      out.n_top = n;
-      out.c_top = c;
-      found_top = true;
-      continue;
-    }
-
-    // ----------------------------
-    // Vertical planes → front candidates
-    // ----------------------------
-    if (cos_to_z < 0.2) {
-      front_candidates.push_back({
-        n, c, pc.points_.size()
-      });
-    }
-  }
-
-  if (!found_top) {
-    std::cerr << "[globreg] top plane not found\n";
+  if (!sel.success) {
+    std::cerr << "[globreg] plane selection failed\n";
     return out;
   }
 
-  if (front_candidates.empty()) {
-    std::cerr << "[globreg] no vertical planes found\n";
-    return out;
-  }
+  out.n_top = sel.n_top;
+  out.c_top = sel.c_top;
+  out.front_normals = { sel.n_front };
+  out.front_centers = { sel.c_front };
 
   // ----------------------------------------------------------
-  // Reject parallel vertical planes
-  // (ground leakage often produces this)
+  // Orientation
   // ----------------------------------------------------------
-  for (size_t i = 0; i < front_candidates.size(); ++i) {
-    for (size_t j = i + 1; j < front_candidates.size(); ++j) {
-
-      double cos_ang =
-        std::abs(front_candidates[i].n.dot(
-                 front_candidates[j].n));
-
-      if (cos_ang > 0.95) {
-        std::cerr
-          << "[globreg] rejecting: parallel vertical planes "
-          << "(cos=" << cos_ang << ")\n";
-        return out;
-      }
-    }
-  }
+  out.R_base = build_frame_from_planes(
+    sel.n_top, sel.n_front);
 
   // ----------------------------------------------------------
-  // Reject planes too far apart (mask leakage / ground)
+  // Translation via LS line intersection
   // ----------------------------------------------------------
-  for (const auto & fc : front_candidates) {
-    double d = (fc.c - out.c_top).norm();
-    if (d > max_plane_center_dist) {
-      std::cerr
-        << "[globreg] rejecting: plane too far from top ("
-        << d << " m)\n";
-      return out;
-    }
-  }
+  Eigen::Vector3d center =
+    closest_point_between_lines(
+      sel.c_top, sel.n_top,
+      sel.c_front, sel.n_front);
 
-  // ----------------------------------------------------------
-  // Sort front planes by support
-  // ----------------------------------------------------------
-  std::sort(
-    front_candidates.begin(),
-    front_candidates.end(),
-    [](const auto & a, const auto & b) {
-      return a.support > b.support;
-    });
-
-  // Keep at most 2 (45° ambiguity case)
-  constexpr size_t MAX_FRONT_PLANES = 2;
-  for (size_t i = 0;
-       i < std::min(front_candidates.size(),
-                    MAX_FRONT_PLANES);
-       ++i) {
-
-    out.front_normals.push_back(front_candidates[i].n);
-    out.front_centers.push_back(front_candidates[i].c);
-  }
-
-  // ----------------------------------------------------------
-  // Build yaw-free base frame from top plane
-  // ----------------------------------------------------------
-  Eigen::Vector3d z = out.n_top;
-
-  Eigen::Vector3d tmp(1.0, 0.0, 0.0);
-  if (std::abs(tmp.dot(z)) > 0.9)
-    tmp = Eigen::Vector3d(0.0, 1.0, 0.0);
-
-  Eigen::Vector3d x =
-    (tmp - tmp.dot(z) * z).normalized();
-  Eigen::Vector3d y = z.cross(x).normalized();
-
-  out.R_base.col(0) = x;
-  out.R_base.col(1) = y;
-  out.R_base.col(2) = z;
+  out.center = center;
 
   out.success = true;
   return out;
 }
+
 
 
 // ============================================================

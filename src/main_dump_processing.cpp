@@ -8,6 +8,10 @@
 #include <iostream>
 #include <sstream>
 
+#include <Eigen/Dense>
+#include <algorithm>
+#include <cmath>
+
 // ------------------------------------------------------------
 // library headers
 // ------------------------------------------------------------
@@ -53,20 +57,6 @@ constexpr double ANGLE_THRESH =
 constexpr double MAX_PLANE_CENTER_DIST = 0.6; // meters
 
 // ============================================================
-// Forward declarations
-// ============================================================
-static void visualize_global(
-  const std::shared_ptr<geometry::PointCloud> & cutout,
-  const GlobalRegistrationResult & glob,
-  const std::string & title);
-
-static void visualize_icp_result(
-  const std::shared_ptr<geometry::PointCloud> & scene,
-  const TemplateData & tpl,
-  const LocalRegistrationResult & result,
-  const std::string & title);
-
-// ============================================================
 // Helpers
 // ============================================================
 static std::string extract_timestamp(const fs::path & p)
@@ -83,6 +73,33 @@ static std::string extract_timestamp(const fs::path & p)
     return {};
 
   return tokens[0] + "_" + tokens[1];
+}
+
+
+inline void compute_pose_error(
+  const Eigen::Matrix4d & H_global,
+  const Eigen::Matrix4d & H_local,
+  double & translation_error,
+  double & rotation_error_rad,
+  double & rotation_error_deg)
+{
+  // --- Translation ---
+  const Eigen::Vector3d t_g = H_global.block<3,1>(0,3);
+  const Eigen::Vector3d t_l = H_local.block<3,1>(0,3);
+
+  translation_error = (t_g - t_l).norm();
+
+  // --- Rotation ---
+  const Eigen::Matrix3d R_g = H_global.block<3,3>(0,0);
+  const Eigen::Matrix3d R_l = H_local.block<3,3>(0,0);
+
+  const Eigen::Matrix3d R_err = R_g.transpose() * R_l;
+
+  double cos_angle = 0.5 * (R_err.trace() - 1.0);
+  cos_angle = std::clamp(cos_angle, -1.0, 1.0);
+
+  rotation_error_rad = std::acos(cos_angle);
+  rotation_error_deg = rotation_error_rad * 180.0 / M_PI;
 }
 
 // ============================================================
@@ -152,6 +169,12 @@ static void visualize_global(
 
     geoms.push_back(make_normal_cylinder(c, n, color));
   }
+
+  auto glob_transform = globalResultToTransform(glob);
+  auto frame =
+    geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+  frame->Transform(glob_transform);
+  geoms.push_back(frame);
 
   visualization::DrawGeometries(geoms, title, 1200, 900);
 }
@@ -317,6 +340,8 @@ int main()
       continue;
     }
 
+    auto H_global = globalResultToTransform(glob);
+
     // --------------------------------------------------------
     // LOCAL REGISTRATION
     // --------------------------------------------------------
@@ -346,11 +371,28 @@ int main()
     std::cout << "         rmse = "
               << result.icp.inlier_rmse_ << "\n";
 
+    auto H_local = result.icp.transformation_;
+
     visualize_icp_result(
       icp_scene,
       templates[result.template_index],
       result,
       "ICP result – " + ts);
+
+
+    // error computation: global vs local
+    double t_err, r_err_rad, r_err_deg;
+
+    compute_pose_error(
+      H_global,
+      H_local,
+      t_err,
+      r_err_rad,
+      r_err_deg);
+
+    std::cout
+      << "translation error: " << t_err << " m\n"
+      << "rotation error:    " << r_err_deg << " deg\n";
   }
 
   return 0;

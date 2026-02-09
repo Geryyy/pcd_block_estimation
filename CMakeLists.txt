@@ -50,6 +50,7 @@ target_link_libraries(pcd_block_estimation
 option(PCD_BLOCK_ESTIMATION_BUILD_TOOLS "Build standalone tools" ON)
 
 if(PCD_BLOCK_ESTIMATION_BUILD_TOOLS)
+
     add_executable(generate_templates src/main_generate_templates.cpp)
     target_link_libraries(generate_templates PRIVATE pcd_block_estimation)
 
