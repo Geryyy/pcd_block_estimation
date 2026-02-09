@@ -319,13 +319,13 @@ namespace pcd_block
 
       if (tpl.num_faces != glob.num_planes)
       {
-        std::cout << "tpl.num_faces " << tpl.num_faces << " != glob.num_faces " << glob.num_planes << std::endl;
+        // std::cout << "tpl.num_faces " << tpl.num_faces << " != glob.num_faces " << glob.num_planes << std::endl;
         continue;
       }
-      else
-      {
-        std::cout << "template [" << ti << "] with " << tpl.num_faces << " faces" << std::endl;
-      }
+      // else
+      // {
+      //   std::cout << "template [" << ti << "] with " << tpl.num_faces << " faces" << std::endl;
+      // }
 
       Eigen::Matrix4d T_base =
           globalResultToTransform(glob);

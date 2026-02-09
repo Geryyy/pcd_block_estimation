@@ -3,6 +3,7 @@
 #include <Eigen/Dense>
 #include <yaml-cpp/yaml.h>
 
+
 #include <filesystem>
 #include <unordered_map>
 #include <iostream>
@@ -20,6 +21,7 @@
 #include "pcd_block_estimation/mask_projection.hpp"
 #include "pcd_block_estimation/template_utils.hpp"
 #include "pcd_block_estimation/pose_estimation.hpp"
+#include "pcd_block_estimation/Timer.hpp"
 
 using namespace open3d;
 using namespace pcd_block;
@@ -55,6 +57,7 @@ const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
 constexpr double ANGLE_THRESH =
   std::cos(30.0 * M_PI / 180.0);
 constexpr double MAX_PLANE_CENTER_DIST = 0.6; // meters
+
 
 // ============================================================
 // Helpers
@@ -214,6 +217,7 @@ static void visualize_icp_result(
 // ============================================================
 int main()
 {
+  Timer exec_timer;
   // ----------------------------------------------------------
   // Load calibration
   // ----------------------------------------------------------
@@ -291,6 +295,7 @@ int main()
     // --------------------------------------------------------
     // GLOBAL REGISTRATION
     // --------------------------------------------------------
+    exec_timer.tic();
     auto glob =
       compute_global_registration(
         *pcd_cutout,
@@ -300,6 +305,8 @@ int main()
         DIST_THRESH,
         MIN_INLIERS,
     MAX_PLANE_CENTER_DIST);
+
+    std::cout << "[GLOBAL] Exec.Time: " << exec_timer.toc()/1e9 << std::endl;
 
     if (!glob.success) {
       std::cout << "[GLOBAL] ❌ failed\n";
@@ -348,12 +355,16 @@ int main()
     const auto & icp_scene =
       glob.plane_cloud ? glob.plane_cloud : pcd_cutout;
 
+    exec_timer.tic();
+
     auto result =
       compute_local_registration(
         *icp_scene,
         templates,
         glob,
         ICP_DIST);
+
+    std::cout << "[LOCAL] Exec.Time: " << exec_timer.toc()/1e9 << std::endl;
 
     if (!result.success) {
       std::cout << "[RESULT] ❌ no valid ICP result\n";
