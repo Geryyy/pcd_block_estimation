@@ -35,8 +35,8 @@ enum class PipelineMode {
   FULL_PIPELINE
 };
 
-static constexpr PipelineMode MODE = PipelineMode::FULL_PIPELINE;
-// static constexpr PipelineMode MODE = PipelineMode::GLOBAL_ONLY;
+// static constexpr PipelineMode MODE = PipelineMode::FULL_PIPELINE;
+static constexpr PipelineMode MODE = PipelineMode::GLOBAL_ONLY;
 
 // ============================================================
 // Paths
@@ -49,7 +49,7 @@ static const std::string TEMPLATE_DIR = "../data/templates";
 // Parameters
 // ============================================================
 constexpr double DIST_THRESH = 0.02;
-constexpr int    MAX_PLANES  = 3;
+constexpr int    MAX_PLANES  = 2;
 constexpr int    MIN_INLIERS = 100;
 constexpr double ICP_DIST   = 0.04;
 
