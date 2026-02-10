@@ -44,15 +44,17 @@ struct GlobalRegistrationResult
 
 // ------------------------------------------------------------
 
-GlobalRegistrationResult compute_global_registration(
-  const open3d::geometry::PointCloud & scene,
-  const Eigen::Vector3d & z_world,
-  double angle_thresh,
-  int max_planes,
-  double dist_thresh,
-  int min_inliers,
-  double max_plane_center_dist   // NEW
-);
+  GlobalRegistrationResult compute_global_registration(
+      const open3d::geometry::PointCloud &scene,
+      const Eigen::Vector3d &z_world,
+      double angle_thresh,
+      int max_planes,
+      double dist_thresh,
+      int min_inliers,
+      double max_plane_center_dist,
+      double support_radius,
+      int min_neighbors,
+      int erosion_iters);
 
 // ============================================================
 // Local registration result (ICP refinement)

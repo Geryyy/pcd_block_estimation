@@ -255,7 +255,10 @@ namespace pcd_block
       int max_planes,
       double dist_thresh,
       int min_inliers,
-      double max_plane_center_dist)
+      double max_plane_center_dist,
+      double support_radius,
+      int min_neighbors,
+      int erosion_iters)
   {
     GlobalRegistrationResult out;
 
@@ -270,7 +273,10 @@ namespace pcd_block
     out.planes =
         extract_planes(
             scene, max_planes,
-            dist_thresh, min_inliers);
+            dist_thresh, min_inliers,
+            support_radius,
+            min_neighbors,
+            erosion_iters);
 
     if (out.planes.empty())
     {
@@ -443,6 +449,21 @@ namespace pcd_block
       return best;
     }
 
+    open3d::geometry::PointCloud scene_with_normals = scene;
+
+    if (!scene_with_normals.HasNormals()) {
+      scene_with_normals.EstimateNormals(
+        open3d::geometry::KDTreeSearchParamHybrid(0.05, 30));
+    }
+
+    if (!scene_with_normals.HasNormals())
+    {
+      scene_with_normals.EstimateNormals(
+          open3d::geometry::KDTreeSearchParamHybrid(
+              /* radius = */ 0.05,
+              /* max_nn = */ 30));
+    }
+
     // constexpr double W_GEOM = 1.0;
     constexpr double W_ICP = 0.5;
 
@@ -464,7 +485,7 @@ namespace pcd_block
           globalResultToTransform(glob);
 
       // test against yaw hypothesis
-      for (int yaw_deg = 0; yaw_deg < 360; yaw_deg += 90)
+      for (int yaw_deg = 0; yaw_deg < 360; yaw_deg += 360)
       {
         // --------------------------------------------------
         // Build transform hypothesis
@@ -481,7 +502,7 @@ namespace pcd_block
         // ICP refinement
         // --------------------------------------------------
         auto icp =
-            run_icp(scene, tpl, T_init, icp_dist);
+            run_icp(scene_with_normals, tpl, T_init, icp_dist);
 
         if (icp.fitness_ <= 0.0)
         {

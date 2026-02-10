@@ -7,16 +7,19 @@
 namespace pcd_block
 {
 
-Eigen::Vector3d normalize(const Eigen::Vector3d &v);
+    Eigen::Vector3d normalize(const Eigen::Vector3d &v);
 
-Eigen::Vector3d compute_center(
-    const open3d::geometry::PointCloud &pcd);
+    Eigen::Vector3d compute_center(
+        const open3d::geometry::PointCloud &pcd);
 
-std::vector<std::pair<Eigen::Vector4d,
-                      open3d::geometry::PointCloud>>
-extract_planes(const open3d::geometry::PointCloud &pcd,
-               int max_planes,
-               double dist_thresh,
-               int min_inliers);
+    std::vector<std::pair<Eigen::Vector4d,
+                          open3d::geometry::PointCloud>>
+    extract_planes(const open3d::geometry::PointCloud &input,
+                   int max_planes,
+                   double dist_thresh,
+                   int min_inliers,
+                   const double support_radius,
+                   const int min_neighbors,
+                   const int erosion_iters);
 
 }
