@@ -35,8 +35,8 @@ enum class PipelineMode {
   FULL_PIPELINE
 };
 
-// static constexpr PipelineMode MODE = PipelineMode::FULL_PIPELINE;
-static constexpr PipelineMode MODE = PipelineMode::GLOBAL_ONLY;
+static constexpr PipelineMode MODE = PipelineMode::FULL_PIPELINE;
+// static constexpr PipelineMode MODE = PipelineMode::GLOBAL_ONLY;
 
 // ============================================================
 // Paths

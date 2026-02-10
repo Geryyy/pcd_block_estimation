@@ -8,6 +8,9 @@
 
 using namespace open3d;
 
+#define GLOBREG_DBG(msg) \
+  std::cerr << "[globreg][dbg] " << msg << std::endl
+
 namespace pcd_block
 {
 
@@ -257,7 +260,7 @@ namespace pcd_block
     GlobalRegistrationResult out;
 
     // ----------------------------------------------------------
-    // Scene centroid (debug / sanity)
+    // Scene centroid
     // ----------------------------------------------------------
     out.center = compute_center(scene);
 
@@ -271,14 +274,14 @@ namespace pcd_block
 
     if (out.planes.empty())
     {
-      std::cerr << "[globreg] no planes detected\n";
+      GLOBREG_DBG("FAIL: no_planes");
       return out;
     }
 
     out.num_planes = static_cast<int>(out.planes.size());
 
     // ----------------------------------------------------------
-    // Select planes
+    // Select top + front planes
     // ----------------------------------------------------------
     auto sel = select_top_and_front_planes(
         out.planes, z_world,
@@ -286,7 +289,7 @@ namespace pcd_block
 
     if (!sel.success)
     {
-      std::cerr << "[globreg] plane selection failed\n";
+      GLOBREG_DBG("FAIL: select_planes");
       return out;
     }
 
@@ -296,48 +299,48 @@ namespace pcd_block
     out.front_centers = {sel.c_front};
 
     // ----------------------------------------------------------
-    // Determine front plane shape (PCA)
+    // Front plane shape (PCA)
     // ----------------------------------------------------------
     const geometry::PointCloud *pc_front = nullptr;
 
     for (const auto &[plane, pc] : out.planes)
     {
-      Eigen::Vector3d c = compute_center(pc);
-      if ((c - sel.c_front).norm() < 1e-6)
+      if ((compute_center(pc) - sel.c_front).norm() < 1e-6)
       {
         pc_front = &pc;
         break;
       }
     }
 
-    bool front_is_square = true;
-    if (pc_front)
+    if (!pc_front)
     {
-      front_is_square =
-          is_front_plane_square_pca(
-              *pc_front,
-              sel.c_front,
-              sel.n_front);
+      GLOBREG_DBG("FAIL: front_pca");
+      return out;
     }
+
+    bool front_is_square =
+        is_front_plane_square_pca(
+            *pc_front,
+            sel.c_front,
+            sel.n_front);
 
     // ----------------------------------------------------------
     // Orientation
     // ----------------------------------------------------------
-    out.R_base = build_frame_from_planes(
-      sel.n_top, sel.n_front, front_is_square);
+    out.R_base =
+        build_frame_from_planes(
+            sel.n_top, sel.n_front, front_is_square);
 
     // ----------------------------------------------------------
-    // Translation via LS line intersection
+    // Translation
     // ----------------------------------------------------------
-    Eigen::Vector3d center =
+    out.center =
         closest_point_between_lines(
             sel.c_top, sel.n_top,
             sel.c_front, sel.n_front);
 
-    out.center = center;
-
     // ----------------------------------------------------------
-    // Concatenate plane inliers (outlier-free cloud)
+    // Plane cloud
     // ----------------------------------------------------------
     out.plane_cloud =
         std::make_shared<geometry::PointCloud>();
@@ -349,11 +352,19 @@ namespace pcd_block
 
     if (out.plane_cloud->points_.empty())
     {
-      std::cerr << "[globreg] plane_cloud empty\n";
+      GLOBREG_DBG("FAIL: empty_plane_cloud");
       return out;
     }
 
     out.success = true;
+
+    // ----------------------------------------------------------
+    // Success summary
+    // ----------------------------------------------------------
+    GLOBREG_DBG(
+        "OK: planes=" << out.num_planes
+                      << " front=" << (front_is_square ? "square" : "rect"));
+
     return out;
   }
 
