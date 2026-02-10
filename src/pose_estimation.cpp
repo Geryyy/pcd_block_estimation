@@ -16,16 +16,18 @@ namespace pcd_block
 // ============================================================
 
 static Eigen::Vector3d
-plane_normal_oriented(
+orient_normal_towards(
   const Eigen::Vector4d & plane,
-  const Eigen::Vector3d & z_world)
+  const Eigen::Vector3d & reference_dir)
 {
   Eigen::Vector3d n = plane.head<3>().normalized();
-  if (n.dot(z_world) < 0.0) {
+
+  if (n.dot(reference_dir) < 0.0) {
     n = -n;
   }
   return n;
 }
+
 
 inline Eigen::Vector3d closest_point_between_lines(
   const Eigen::Vector3d & c1,
@@ -84,7 +86,7 @@ struct PlaneSelection
 
 PlaneSelection select_top_and_front_planes(
   const std::vector<std::pair<Eigen::Vector4d,
-  geometry::PointCloud>> & planes,
+                              geometry::PointCloud>> & planes,
   const Eigen::Vector3d & z_world,
   double angle_thresh,
   double max_plane_center_dist)
@@ -92,30 +94,41 @@ PlaneSelection select_top_and_front_planes(
   PlaneSelection sel;
 
   bool found_top = false;
+
   struct Candidate
   {
-    Eigen::Vector3d n;
+    Eigen::Vector3d n_raw;
     Eigen::Vector3d c;
     size_t support;
   };
+
   std::vector<Candidate> fronts;
 
+  // ----------------------------------------------------------
+  // Classify planes
+  // ----------------------------------------------------------
   for (const auto &[plane, pc] : planes) {
-    Eigen::Vector3d n =
-      plane_normal_oriented(plane, z_world);
+
+    Eigen::Vector3d n_raw = plane.head<3>().normalized();
     Eigen::Vector3d c = compute_center(pc);
 
-    double cos_z = std::abs(n.dot(z_world));
+    double cos_z = std::abs(n_raw.dot(z_world));
 
+    // -----------------------
+    // Top plane
+    // -----------------------
     if (!found_top && cos_z > angle_thresh) {
-      sel.n_top = n;
+      sel.n_top = orient_normal_towards(plane, z_world);
       sel.c_top = c;
       found_top = true;
       continue;
     }
 
+    // -----------------------
+    // Front plane candidates
+    // -----------------------
     if (cos_z < 0.2) {
-      fronts.push_back({n, c, pc.points_.size()});
+      fronts.push_back({n_raw, c, pc.points_.size()});
     }
   }
 
@@ -123,18 +136,31 @@ PlaneSelection select_top_and_front_planes(
     return sel;
   }
 
-  // Sort by support
+  // ----------------------------------------------------------
+  // Sort front candidates by support
+  // ----------------------------------------------------------
   std::sort(
     fronts.begin(), fronts.end(),
-    [](auto & a, auto & b)
+    [](const auto & a, const auto & b)
     {
       return a.support > b.support;
     });
 
-  // Distance gating
+  // ----------------------------------------------------------
+  // Distance gating + orientation
+  // ----------------------------------------------------------
   for (const auto & fc : fronts) {
+
     if ((fc.c - sel.c_top).norm() < max_plane_center_dist) {
-      sel.n_front = fc.n;
+
+      // Vector from plane center towards sensor (origin)
+      Eigen::Vector3d to_sensor = -fc.c.normalized();
+
+      sel.n_front =
+        (fc.n_raw.dot(to_sensor) < 0.0)
+          ? -fc.n_raw
+          :  fc.n_raw;
+
       sel.c_front = fc.c;
       sel.success = true;
       return sel;
