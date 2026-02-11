@@ -32,20 +32,144 @@ namespace pcd_block
     return n;
   }
 
-  static bool
-  is_front_plane_square_pca(
+
+  static FrontPlaneShape
+classify_front_plane_bb(
+    const geometry::PointCloud &pc_front,
+    const Eigen::Vector3d &c_front,
+    const Eigen::Vector3d &n_front,
+    double square_ratio_thresh = 1.5)
+{
+    if (pc_front.points_.size() < 20)
+    {
+        return FrontPlaneShape::SQUARE;
+    }
+
+    // --------------------------------------------------------
+    // 1️⃣ Build orthonormal basis in plane
+    // --------------------------------------------------------
+
+    Eigen::Vector3d n = n_front.normalized();
+
+    // Choose arbitrary vector not parallel to n
+    Eigen::Vector3d tmp =
+        std::abs(n.z()) < 0.9 ?
+        Eigen::Vector3d::UnitZ() :
+        Eigen::Vector3d::UnitX();
+
+    Eigen::Vector3d u = (tmp - tmp.dot(n) * n).normalized();
+    Eigen::Vector3d v = n.cross(u).normalized();
+
+    // --------------------------------------------------------
+    // 2️⃣ Project points to 2D plane coordinates
+    // --------------------------------------------------------
+
+    std::vector<double> xs;
+    std::vector<double> ys;
+
+    xs.reserve(pc_front.points_.size());
+    ys.reserve(pc_front.points_.size());
+
+    for (const auto &p : pc_front.points_)
+    {
+        Eigen::Vector3d d = p - c_front;
+
+        xs.push_back(d.dot(u));
+        ys.push_back(d.dot(v));
+    }
+
+    if (xs.size() < 10)
+    {
+        return FrontPlaneShape::SQUARE;
+    }
+
+    // --------------------------------------------------------
+    // 3️⃣ Robust extents (5%–95% percentiles)
+    // --------------------------------------------------------
+
+    auto percentile = [](std::vector<double> &data, double q)
+    {
+        std::sort(data.begin(), data.end());
+        size_t idx =
+            static_cast<size_t>(q * (data.size() - 1));
+        return data[idx];
+    };
+
+    std::vector<double> xs_copy = xs;
+    std::vector<double> ys_copy = ys;
+
+    double x_min = percentile(xs_copy, 0.05);
+    double x_max = percentile(xs_copy, 0.95);
+    double y_min = percentile(ys_copy, 0.05);
+    double y_max = percentile(ys_copy, 0.95);
+
+    double width  = x_max - x_min;
+    double height = y_max - y_min;
+
+    if (width < 1e-6 || height < 1e-6)
+    {
+        return FrontPlaneShape::SQUARE;
+    }
+
+    double ratio =
+        std::max(width, height) /
+        std::min(width, height);
+
+    GLOBREG_DBG("BB ratio: " << ratio);
+
+    if (ratio < square_ratio_thresh)
+    {
+        return FrontPlaneShape::SQUARE;
+    }
+
+    // --------------------------------------------------------
+    // 4️⃣ Determine elongation direction
+    // --------------------------------------------------------
+
+    const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
+
+    // If vertical axis in plane aligns with Z_WORLD
+    double vertical_alignment =
+        std::abs(v.dot(Z_WORLD));
+
+    bool height_is_vertical =
+        vertical_alignment > 0.7;
+
+    GLOBREG_DBG("Vertical alignment: " << vertical_alignment);
+
+    if (height_is_vertical)
+    {
+        if (height > width)
+            return FrontPlaneShape::TALL_VERTICAL;
+        else
+            return FrontPlaneShape::WIDE_HORIZONTAL;
+    }
+    else
+    {
+        if (width > height)
+            return FrontPlaneShape::WIDE_HORIZONTAL;
+        else
+            return FrontPlaneShape::TALL_VERTICAL;
+    }
+}
+
+
+  static FrontPlaneShape
+  classify_front_plane_pca(
       const geometry::PointCloud &pc_front,
       const Eigen::Vector3d &c_front,
       const Eigen::Vector3d &n_front,
-      double square_ratio_thresh = 1.5)
+      double square_ratio_thresh = 1.4)
   {
+
     if (pc_front.points_.size() < 10)
     {
-      // Not enough points → treat as square (safe default)
-      return true;
+      return FrontPlaneShape::SQUARE;
     }
 
-    // Accumulate covariance in plane
+    // --------------------------------------------------------
+    // Covariance in plane
+    // --------------------------------------------------------
     Eigen::Matrix3d C = Eigen::Matrix3d::Zero();
 
     for (const auto &p : pc_front.points_)
@@ -64,23 +188,60 @@ namespace pcd_block
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> es(C);
     if (es.info() != Eigen::Success)
     {
-      return true;
+      return FrontPlaneShape::SQUARE;
     }
 
+    // Eigenvalues sorted ascending
     Eigen::Vector3d evals = es.eigenvalues();
+    Eigen::Matrix3d evecs = es.eigenvectors();
 
-    // largest / second largest
-    double lambda1 = evals(2);
-    double lambda2 = evals(1);
+    double lambda1 = evals(2); // largest
+    double lambda2 = evals(1); // second largest
 
     if (lambda2 < 1e-9)
     {
-      return true;
+      return FrontPlaneShape::SQUARE;
     }
 
     double ratio = lambda1 / lambda2;
 
-    return ratio < square_ratio_thresh;
+    GLOBREG_DBG("PCA ratio: " << ratio);
+
+    if (ratio < square_ratio_thresh)
+    {
+      return FrontPlaneShape::SQUARE;
+    }
+
+    // --------------------------------------------------------
+    // Determine elongation direction
+    // --------------------------------------------------------
+
+    // principal direction of largest variance
+    Eigen::Vector3d major_axis = evecs.col(2).normalized();
+
+    // remove potential sign ambiguity
+    if (major_axis.dot(n_front) > 0.99)
+    {
+      // shouldn't happen but safe guard
+      return FrontPlaneShape::SQUARE;
+    }
+
+    // compare against vertical direction
+    const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
+
+    double vertical_alignment =
+        std::abs(major_axis.dot(Z_WORLD));
+
+    if (vertical_alignment > 0.7)
+    {
+      // elongated in vertical direction
+      return FrontPlaneShape::TALL_VERTICAL;
+    }
+    else
+    {
+      // elongated horizontally
+      return FrontPlaneShape::WIDE_HORIZONTAL;
+    }
   }
 
   inline Eigen::Vector3d closest_point_between_lines(
@@ -145,6 +306,60 @@ namespace pcd_block
     return R;
   }
 
+  static std::shared_ptr<geometry::PointCloud>
+  clip_scene_with_top_and_front(
+      const geometry::PointCloud &scene,
+      Eigen::Vector3d c_front,
+      Eigen::Vector3d n_front,
+      const Eigen::Vector3d &c_top,
+      const Eigen::Vector3d &n_top,
+      double front_margin,
+      double top_margin)
+  {
+    auto clipped =
+        std::make_shared<geometry::PointCloud>();
+
+    clipped->points_.reserve(scene.points_.size());
+
+    // ----------------------------------------------------------
+    // Ensure front normal points toward sensor origin
+    // ----------------------------------------------------------
+
+    Eigen::Vector3d origin = Eigen::Vector3d::Zero();
+
+    if ((origin - c_front).dot(n_front) < 0.0)
+    {
+      n_front = -n_front;
+    }
+
+    // ----------------------------------------------------------
+    // Half-space clipping
+    // Keep:
+    //   - points behind front plane
+    //   - points below top plane
+    // ----------------------------------------------------------
+
+    for (const auto &p : scene.points_)
+    {
+      double dist_front =
+          (p - c_front).dot(n_front);
+
+      double dist_top =
+          (p - c_top).dot(n_top);
+
+      bool keep =
+          (dist_front <= front_margin) &&
+          (dist_top <= top_margin);
+
+      if (keep)
+      {
+        clipped->points_.push_back(p);
+      }
+    }
+
+    return clipped;
+  }
+
   struct PlaneSelection
   {
     Eigen::Vector3d n_top, c_top;
@@ -203,8 +418,15 @@ namespace pcd_block
       }
     }
 
-    if (!found_top || fronts.empty())
+    if (!found_top)
     {
+      GLOBREG_DBG("No top plane candidate found");
+      return sel;
+    }
+
+    if (fronts.empty())
+    {
+      GLOBREG_DBG("No front plane candidates found");
       return sel;
     }
 
@@ -260,19 +482,92 @@ namespace pcd_block
       int min_neighbors,
       int erosion_iters)
   {
-    GlobalRegistrationResult out;
+    GlobalRegistrationResult out_initial;
 
     // ----------------------------------------------------------
     // Scene centroid
     // ----------------------------------------------------------
-    out.center = compute_center(scene);
+    out_initial.center = compute_center(scene);
+
+    // ----------------------------------------------------------
+    // Plane extraction
+    // ----------------------------------------------------------
+    out_initial.planes =
+        extract_planes(
+            scene, max_planes,
+            dist_thresh, min_inliers,
+            support_radius,
+            min_neighbors,
+            erosion_iters);
+
+    if (out_initial.planes.empty())
+    {
+      GLOBREG_DBG("FAIL: no_planes");
+      return out_initial;
+    }
+
+    out_initial.num_planes = static_cast<int>(out_initial.planes.size());
+
+    // ----------------------------------------------------------
+    // Select top + front planes
+    // ----------------------------------------------------------
+    auto sel_initial = select_top_and_front_planes(
+        out_initial.planes, z_world,
+        angle_thresh, max_plane_center_dist);
+
+    if (!sel_initial.success)
+    {
+      GLOBREG_DBG("FAIL: initial select_planes");
+      return out_initial;
+    }
+
+    out_initial.n_top = sel_initial.n_top;
+    out_initial.c_top = sel_initial.c_top;
+    out_initial.front_normals = {sel_initial.n_front};
+    out_initial.front_centers = {sel_initial.c_front};
+
+    // -----------------------------------------------------------
+    // Clipping scene to planes can improve ICP stability by removing outliers and reducing noise, but risks removing too much data if planes are small or far from each other. Make this optional for now.
+    // -----------------------------------------------------------
+    constexpr double FRONT_CLIP_MARGIN = 0.05; // keep points up to 5cm in front of the front plane
+    constexpr double TOP_CLIP_MARGIN = 0.05;   // keep points up to
+
+    auto clipped =
+        clip_scene_with_top_and_front(
+            scene,
+            sel_initial.c_front,
+            sel_initial.n_front,
+            sel_initial.c_top,
+            sel_initial.n_top,
+            FRONT_CLIP_MARGIN,
+            TOP_CLIP_MARGIN);
+
+    if (clipped->points_.size() > 50)
+    {
+      GLOBREG_DBG("Clipping removed "
+                  << scene.points_.size() - clipped->points_.size()
+                  << " points");
+
+    }
+    else
+    {
+      GLOBREG_DBG("Clipping skipped (too few points left)");
+    }
+
+    GlobalRegistrationResult out;
+    geometry::PointCloud scene_filtered = *clipped;
+
+    // ----------------------------------------------------------
+    // Scene centroid
+    // ----------------------------------------------------------
+    out.center = compute_center(scene_filtered);
 
     // ----------------------------------------------------------
     // Plane extraction
     // ----------------------------------------------------------
     out.planes =
         extract_planes(
-            scene, max_planes,
+            scene_filtered, max_planes,
             dist_thresh, min_inliers,
             support_radius,
             min_neighbors,
@@ -304,9 +599,7 @@ namespace pcd_block
     out.front_normals = {sel.n_front};
     out.front_centers = {sel.c_front};
 
-    // ----------------------------------------------------------
-    // Front plane shape (PCA)
-    // ----------------------------------------------------------
+
     const geometry::PointCloud *pc_front = nullptr;
 
     for (const auto &[plane, pc] : out.planes)
@@ -320,15 +613,34 @@ namespace pcd_block
 
     if (!pc_front)
     {
-      GLOBREG_DBG("FAIL: front_pca");
+      GLOBREG_DBG("FAIL: no front plane cloud found");
       return out;
     }
 
-    bool front_is_square =
-        is_front_plane_square_pca(
-            *pc_front,
-            sel.c_front,
-            sel.n_front);
+    FrontPlaneShape shape =
+        classify_front_plane_pca(*pc_front, sel.c_front, sel.n_front);
+
+    bool front_is_square;
+
+    if (shape == FrontPlaneShape::SQUARE)
+    {
+      GLOBREG_DBG("Front plane classified as SQUARE");
+      front_is_square = true;
+    }
+    else if (shape == FrontPlaneShape::WIDE_HORIZONTAL)
+    {
+      // side of block
+      GLOBREG_DBG("Front plane classified as WIDE_HORIZONTAL");
+      front_is_square = false;
+    }
+    else if (shape == FrontPlaneShape::TALL_VERTICAL)
+    {
+      // stacked blocks
+      // treat same as square for now
+      GLOBREG_DBG("FAIL: Front plane classified as TALL_VERTICAL");
+      // front_is_square = true;
+      return out;
+    }
 
     // ----------------------------------------------------------
     // Orientation
@@ -451,9 +763,10 @@ namespace pcd_block
 
     open3d::geometry::PointCloud scene_with_normals = scene;
 
-    if (!scene_with_normals.HasNormals()) {
+    if (!scene_with_normals.HasNormals())
+    {
       scene_with_normals.EstimateNormals(
-        open3d::geometry::KDTreeSearchParamHybrid(0.05, 30));
+          open3d::geometry::KDTreeSearchParamHybrid(0.05, 30));
     }
 
     if (!scene_with_normals.HasNormals())

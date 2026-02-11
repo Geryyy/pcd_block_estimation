@@ -15,6 +15,14 @@ namespace pcd_block
 // Global registration result (scene-only reasoning)
 // ============================================================
 
+enum class FrontPlaneShape
+{
+    SQUARE,
+    WIDE_HORIZONTAL,   // side face
+    TALL_VERTICAL      // stacked blocks
+};
+
+
 struct GlobalRegistrationResult
 {
   bool success = false;

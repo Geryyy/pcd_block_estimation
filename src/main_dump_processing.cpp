@@ -38,6 +38,11 @@ enum class PipelineMode
 static constexpr PipelineMode MODE = PipelineMode::FULL_PIPELINE;
 // static constexpr PipelineMode MODE = PipelineMode::GLOBAL_ONLY;
 
+static constexpr bool DEBUG_PIPELINE_VISUALIZATION = true;
+constexpr double DEBUG_OFFSET_X = 1.5;
+constexpr bool visualize_failed_global = false;
+constexpr bool visualize_failed_local = true;
+
 // ============================================================
 // Paths
 // ============================================================
@@ -48,13 +53,13 @@ static const std::string TEMPLATE_DIR = "../data/templates";
 // ============================================================
 // Parameters
 // ============================================================
-constexpr double DIST_THRESH = 0.02;
+constexpr double DIST_THRESH = 0.05;
 constexpr int MAX_PLANES = 2;
 constexpr int MIN_INLIERS = 100;
-constexpr double ICP_DIST = 0.04;
+constexpr double ICP_DIST = 0.1;
 constexpr double CLUSTER_SUPPORT_RADIUS = 0.1;
 constexpr int CLUSTER_MIN_NEIGHBORS = 10;
-constexpr int CLUSTER_EROSION_ITERS = 1;
+constexpr int CLUSTER_EROSION_ITERS = 0;
 
 const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
 constexpr double ANGLE_THRESH =
@@ -78,6 +83,13 @@ static std::string extract_timestamp(const fs::path &p)
     return {};
 
   return tokens[0] + "_" + tokens[1];
+}
+
+static Eigen::Matrix4d make_x_offset(double x)
+{
+  Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+  T(0, 3) = x;
+  return T;
 }
 
 inline void compute_pose_error(
@@ -214,6 +226,76 @@ static void visualize_icp_result(
   visualization::DrawGeometries(geoms, title, 1200, 900);
 }
 
+static void visualize_debug_pipeline(
+    const std::shared_ptr<geometry::PointCloud> &original,
+    const Eigen::Matrix4d &H_global,
+    const std::shared_ptr<geometry::PointCloud> &icp_scene,
+    const TemplateData &tpl,
+    const LocalRegistrationResult &local,
+    const std::string &title)
+{
+  std::vector<std::shared_ptr<const geometry::Geometry>> geoms;
+
+  // ---------------- ORIGINAL ----------------
+  {
+    auto pc = std::make_shared<geometry::PointCloud>(*original);
+    pc->PaintUniformColor({0.6, 0.6, 0.6});
+    geoms.push_back(pc);
+
+    auto frame = geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+    geoms.push_back(frame);
+  }
+
+  // ---------------- GLOBAL ----------------
+  {
+    Eigen::Matrix4d T = make_x_offset(DEBUG_OFFSET_X);
+
+    auto pc = std::make_shared<geometry::PointCloud>(*icp_scene);
+    pc->PaintUniformColor({0, 0.6, 1});
+    pc->Transform(T);
+    geoms.push_back(pc);
+
+    auto frame = geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+    frame->Transform(T * H_global);
+    geoms.push_back(frame);
+  }
+
+  // ---------------- LOCAL ----------------
+  {
+    Eigen::Matrix4d T = make_x_offset(2.0 * DEBUG_OFFSET_X);
+
+    auto scene_vis = std::make_shared<geometry::PointCloud>(*icp_scene);
+    scene_vis->PaintUniformColor({0, 0.8, 0});
+    scene_vis->Transform(T);
+    geoms.push_back(scene_vis);
+
+    auto tpl_vis = std::make_shared<geometry::PointCloud>(*tpl.pcd);
+    tpl_vis->Transform(local.icp.transformation_);
+    tpl_vis->Transform(T);
+    tpl_vis->PaintUniformColor({1, 0, 0});
+    geoms.push_back(tpl_vis);
+
+    auto frame = geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+    frame->Transform(T * local.icp.transformation_);
+    geoms.push_back(frame);
+  }
+
+  visualization::DrawGeometries(geoms, title, 1600, 900);
+}
+
+static void visualize_original_only(
+    const std::shared_ptr<geometry::PointCloud> &original,
+    const std::string &title)
+{
+  auto pc = std::make_shared<geometry::PointCloud>(*original);
+  pc->PaintUniformColor({0.7, 0.7, 0.7});
+
+  auto frame =
+      geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+
+  visualization::DrawGeometries({pc, frame}, title, 1200, 900);
+}
+
 // ============================================================
 // MAIN
 // ============================================================
@@ -325,6 +407,14 @@ int main()
     if (!glob.success)
     {
       std::cout << "[GLOBAL] ❌ failed\n";
+
+      if (visualize_failed_global)
+      {
+        visualize_original_only(
+            pcd_cutout,
+            "GLOBAL FAILED – " + ts);
+      }
+
       continue;
     }
 
@@ -390,9 +480,43 @@ int main()
     if (!result.success)
     {
       std::cout << "[RESULT] ❌ no valid ICP result\n";
+
+      if (visualize_failed_local)
+      {
+        // show original + global side by side
+        std::vector<std::shared_ptr<const geometry::Geometry>> geoms;
+
+        // ORIGINAL
+        {
+          auto pc = std::make_shared<geometry::PointCloud>(*pcd_cutout);
+          pc->PaintUniformColor({0.6, 0.6, 0.6});
+          geoms.push_back(pc);
+        }
+
+        // GLOBAL
+        {
+          Eigen::Matrix4d T = make_x_offset(DEBUG_OFFSET_X);
+
+          auto pc = std::make_shared<geometry::PointCloud>(*icp_scene);
+          pc->PaintUniformColor({0, 0.6, 1});
+          pc->Transform(T);
+          geoms.push_back(pc);
+
+          auto frame =
+              geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+          frame->Transform(T * H_global);
+          geoms.push_back(frame);
+        }
+
+        visualization::DrawGeometries(
+            geoms,
+            "LOCAL FAILED – " + ts,
+            1400,
+            900);
+      }
+
       continue;
     }
-
     std::cout << "[RESULT] template[" << result.template_index << "]= "
               << result.template_name << "\n";
     // std::cout << "         front_plane = "
@@ -406,11 +530,11 @@ int main()
 
     auto H_local = result.icp.transformation_;
 
-    visualize_icp_result(
-        icp_scene,
-        templates[result.template_index],
-        result,
-        "ICP result – " + ts);
+    // visualize_icp_result(
+    //     icp_scene,
+    //     templates[result.template_index],
+    //     result,
+    //     "ICP result – " + ts);
 
     // error computation: global vs local
     double t_err, r_err_rad, r_err_deg;
@@ -425,6 +549,17 @@ int main()
     std::cout
         << "translation error: " << t_err << " m\n"
         << "rotation error:    " << r_err_deg << " deg\n";
+
+    if (DEBUG_PIPELINE_VISUALIZATION)
+    {
+      visualize_debug_pipeline(
+          pcd_cutout,
+          H_global,
+          icp_scene,
+          templates[result.template_index],
+          result,
+          "DEBUG pipeline – " + ts);
+    }
   }
 
   return 0;
