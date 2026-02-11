@@ -1,2 +1,4 @@
 data/templates
 build/
+
+data/dump*
