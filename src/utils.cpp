@@ -22,10 +22,7 @@ namespace pcd_block
     extract_planes(const open3d::geometry::PointCloud &input,
                    int max_planes,
                    double dist_thresh,
-                   int min_inliers,
-                   const double support_radius,
-                   const int min_neighbors,
-                   const int erosion_iters)
+                   int min_inliers)
     {
         std::vector<std::pair<Eigen::Vector4d,
                               open3d::geometry::PointCloud>>
@@ -58,50 +55,54 @@ namespace pcd_block
             open3d::geometry::PointCloud pc =
                 *rest.SelectByIndex(indices);
 
-            // --------------------------------------------------
-            // NEW: local support pruning via KD-tree
-            // --------------------------------------------------
-            for (int iter = 0; iter < erosion_iters; ++iter)
-            {
+            // params:
+            // const double support_radius,
+            // const int min_neighbors,
+            // const int erosion_iters
+            // // --------------------------------------------------
+            // // NEW: local support pruning via KD-tree
+            // // --------------------------------------------------
+            // for (int iter = 0; iter < erosion_iters; ++iter)
+            // {
 
-                if (pc.points_.size() < static_cast<size_t>(min_inliers))
-                {
-                    break;
-                }
+            //     if (pc.points_.size() < static_cast<size_t>(min_inliers))
+            //     {
+            //         break;
+            //     }
 
-                open3d::geometry::KDTreeFlann kdtree(pc);
-                std::vector<Eigen::Vector3d> kept;
+            //     open3d::geometry::KDTreeFlann kdtree(pc);
+            //     std::vector<Eigen::Vector3d> kept;
 
-                for (size_t pi = 0; pi < pc.points_.size(); ++pi)
-                {
+            //     for (size_t pi = 0; pi < pc.points_.size(); ++pi)
+            //     {
 
-                    std::vector<int> nn_indices;
-                    std::vector<double> nn_dists;
+            //         std::vector<int> nn_indices;
+            //         std::vector<double> nn_dists;
 
-                    int k = kdtree.SearchRadius(
-                        pc.points_[pi],
-                        support_radius,
-                        nn_indices,
-                        nn_dists);
+            //         int k = kdtree.SearchRadius(
+            //             pc.points_[pi],
+            //             support_radius,
+            //             nn_indices,
+            //             nn_dists);
 
-                    // k includes the point itself
-                    if (k >= min_neighbors)
-                    {
-                        kept.push_back(pc.points_[pi]);
-                    }
-                }
+            //         // k includes the point itself
+            //         if (k >= min_neighbors)
+            //         {
+            //             kept.push_back(pc.points_[pi]);
+            //         }
+            //     }
 
-                pc.points_ = std::move(kept);
-            }
+            //     pc.points_ = std::move(kept);
+            // }
 
-            // --------------------------------------------------
-            // Fallback: if erosion killed too much, keep raw
-            // --------------------------------------------------
-            if (pc.points_.size() < static_cast<size_t>(min_inliers))
-            {
-                pc = *rest.SelectByIndex(indices);
-                std::cerr << "extract_planes(): clustering failed!" << std::endl;
-            }
+            // // --------------------------------------------------
+            // // Fallback: if erosion killed too much, keep raw
+            // // --------------------------------------------------
+            // if (pc.points_.size() < static_cast<size_t>(min_inliers))
+            // {
+            //     pc = *rest.SelectByIndex(indices);
+            //     std::cerr << "extract_planes(): clustering failed!" << std::endl;
+            // }
 
             planes.emplace_back(plane, pc);
 

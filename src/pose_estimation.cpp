@@ -477,10 +477,7 @@ classify_front_plane_bb(
       int max_planes,
       double dist_thresh,
       int min_inliers,
-      double max_plane_center_dist,
-      double support_radius,
-      int min_neighbors,
-      int erosion_iters)
+      double max_plane_center_dist)
   {
     GlobalRegistrationResult out_initial;
 
@@ -495,10 +492,7 @@ classify_front_plane_bb(
     out_initial.planes =
         extract_planes(
             scene, max_planes,
-            dist_thresh, min_inliers,
-            support_radius,
-            min_neighbors,
-            erosion_iters);
+            dist_thresh, min_inliers);
 
     if (out_initial.planes.empty())
     {
@@ -568,10 +562,7 @@ classify_front_plane_bb(
     out.planes =
         extract_planes(
             scene_filtered, max_planes,
-            dist_thresh, min_inliers,
-            support_radius,
-            min_neighbors,
-            erosion_iters);
+            dist_thresh, min_inliers);
 
     if (out.planes.empty())
     {

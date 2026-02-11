@@ -59,10 +59,7 @@ struct GlobalRegistrationResult
       int max_planes,
       double dist_thresh,
       int min_inliers,
-      double max_plane_center_dist,
-      double support_radius,
-      int min_neighbors,
-      int erosion_iters);
+      double max_plane_center_dist);
 
 // ============================================================
 // Local registration result (ICP refinement)

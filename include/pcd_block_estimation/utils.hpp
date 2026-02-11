@@ -17,9 +17,6 @@ namespace pcd_block
     extract_planes(const open3d::geometry::PointCloud &input,
                    int max_planes,
                    double dist_thresh,
-                   int min_inliers,
-                   const double support_radius,
-                   const int min_neighbors,
-                   const int erosion_iters);
+                   int min_inliers);
 
 }

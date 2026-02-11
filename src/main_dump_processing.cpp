@@ -53,13 +53,10 @@ static const std::string TEMPLATE_DIR = "../data/templates";
 // ============================================================
 // Parameters
 // ============================================================
-constexpr double DIST_THRESH = 0.05;
+constexpr double DIST_THRESH = 0.02;
 constexpr int MAX_PLANES = 2;
 constexpr int MIN_INLIERS = 100;
 constexpr double ICP_DIST = 0.1;
-constexpr double CLUSTER_SUPPORT_RADIUS = 0.1;
-constexpr int CLUSTER_MIN_NEIGHBORS = 10;
-constexpr int CLUSTER_EROSION_ITERS = 0;
 
 const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
 constexpr double ANGLE_THRESH =
@@ -397,10 +394,7 @@ int main()
             MAX_PLANES,
             DIST_THRESH,
             MIN_INLIERS,
-            MAX_PLANE_CENTER_DIST,
-            CLUSTER_SUPPORT_RADIUS,
-            CLUSTER_MIN_NEIGHBORS,
-            CLUSTER_EROSION_ITERS);
+            MAX_PLANE_CENTER_DIST);
 
     std::cout << "[GLOBAL] Exec.Time: " << exec_timer.toc() / 1e9 << std::endl;
 

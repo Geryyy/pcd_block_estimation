@@ -33,9 +33,6 @@ constexpr double DIST_THRESH = 0.02;
 constexpr int MAX_PLANES = 3;
 constexpr int MIN_INLIERS = 100;
 constexpr double ICP_DIST = 0.04;
-constexpr double CLUSTER_SUPPORT_RADIUS = 0.02;
-constexpr int CLUSTER_MIN_NEIGHBORS = 10;
-constexpr int CLUSTER_EROSION_ITERS = 2;
 
 const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
 constexpr double ANGLE_THRESH =
@@ -144,10 +141,7 @@ int main()
             MAX_PLANES,
             DIST_THRESH,
             MIN_INLIERS,
-            MAX_PLANE_CENTER_DIST,
-            CLUSTER_SUPPORT_RADIUS,
-            CLUSTER_MIN_NEIGHBORS,
-            CLUSTER_EROSION_ITERS);
+            MAX_PLANE_CENTER_DIST);
 
   // --------------------------------------------------------
   // Load templates
