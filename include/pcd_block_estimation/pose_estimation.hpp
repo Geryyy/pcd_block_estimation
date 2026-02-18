@@ -17,9 +17,9 @@ namespace pcd_block
 
 enum class FrontPlaneShape
 {
-    SQUARE,
-    WIDE_HORIZONTAL,   // side face
-    TALL_VERTICAL      // stacked blocks
+  SQUARE,
+  WIDE_HORIZONTAL,     // side face
+  TALL_VERTICAL        // stacked blocks
 };
 
 
@@ -36,7 +36,7 @@ struct GlobalRegistrationResult
   // Raw plane info
   int num_planes = 0;
   std::vector<std::pair<Eigen::Vector4d,
-                         open3d::geometry::PointCloud>> planes;
+    open3d::geometry::PointCloud>> planes;
 
   // Concatenated inlier cloud of all planes
   std::shared_ptr<open3d::geometry::PointCloud> plane_cloud;
@@ -52,14 +52,15 @@ struct GlobalRegistrationResult
 
 // ------------------------------------------------------------
 
-  GlobalRegistrationResult compute_global_registration(
-      const open3d::geometry::PointCloud &scene,
-      const Eigen::Vector3d &z_world,
-      double angle_thresh,
-      int max_planes,
-      double dist_thresh,
-      int min_inliers,
-      double max_plane_center_dist);
+GlobalRegistrationResult compute_global_registration(
+  const open3d::geometry::PointCloud & scene,
+  const Eigen::Vector3d & z_world,
+  double angle_thresh,
+  int max_planes,
+  double dist_thresh,
+  int min_inliers,
+  double max_plane_center_dist,
+  bool enable_plane_clipping = false);
 
 // ============================================================
 // Local registration result (ICP refinement)
@@ -70,7 +71,7 @@ constexpr double DEG2RAD = M_PI / 180.0;
 struct HypothesisScore
 {
   double geom = 0.0;   // plane compatibility
-  double icp  = 0.0;   // ICP fitness
+  double icp = 0.0;    // ICP fitness
   double total = 0.0;
 };
 
@@ -106,4 +107,3 @@ Eigen::Matrix4d
 globalResultToTransform(const GlobalRegistrationResult & glob);
 
 } // namespace pcd_block
-

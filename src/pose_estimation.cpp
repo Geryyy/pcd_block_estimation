@@ -133,6 +133,7 @@ classify_front_plane_bb(
 
   if (height_is_vertical) {
     if (height > width) {
+      std::cerr << "Case 1: Classified as tall vertical" << std::endl;
       return FrontPlaneShape::TALL_VERTICAL;
     } else {
       return FrontPlaneShape::WIDE_HORIZONTAL;
@@ -141,6 +142,7 @@ classify_front_plane_bb(
     if (width > height) {
       return FrontPlaneShape::WIDE_HORIZONTAL;
     } else {
+      std::cerr << "Case 2: Classified as tall vertical" << std::endl;
       return FrontPlaneShape::TALL_VERTICAL;
     }
   }
@@ -447,10 +449,11 @@ GlobalRegistrationResult compute_global_registration(
   int max_planes,
   double dist_thresh,
   int min_inliers,
-  double max_plane_center_dist)
+  double max_plane_center_dist,
+  bool enable_plane_clipping)
 {
   GlobalRegistrationResult out_initial;
-  bool clipping_enabled = true;
+  bool clipping_enabled = enable_plane_clipping;
 
 
   GlobalRegistrationResult out;
