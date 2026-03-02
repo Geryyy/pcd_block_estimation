@@ -3,6 +3,8 @@ project(pcd_block_estimation LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Needed when static deps (yaml-cpp) are linked into shared libs.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ------------------------------------------------------------
 # Dependencies
@@ -13,12 +15,20 @@ find_package(OpenCV REQUIRED)
 
 include(FetchContent)
 
+set(YAML_BUILD_SHARED_LIBS OFF CACHE BOOL "Build yaml-cpp shared library" FORCE)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "Enable yaml-cpp tests" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "Enable yaml-cpp tools" FORCE)
+
 FetchContent_Declare(
   yaml-cpp
   GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
   GIT_TAG yaml-cpp-0.7.0
 )
 FetchContent_MakeAvailable(yaml-cpp)
+
+if(TARGET yaml-cpp)
+  set_target_properties(yaml-cpp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # ------------------------------------------------------------
 # Library
