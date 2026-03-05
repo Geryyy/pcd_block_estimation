@@ -60,7 +60,8 @@ GlobalRegistrationResult compute_global_registration(
   double dist_thresh,
   int min_inliers,
   double max_plane_center_dist,
-  bool enable_plane_clipping = false);
+  bool enable_plane_clipping = false,
+  bool reject_tall_vertical = true);
 
 // ============================================================
 // Local registration result (ICP refinement)

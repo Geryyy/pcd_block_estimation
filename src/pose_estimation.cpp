@@ -450,7 +450,8 @@ GlobalRegistrationResult compute_global_registration(
   double dist_thresh,
   int min_inliers,
   double max_plane_center_dist,
-  bool enable_plane_clipping)
+  bool enable_plane_clipping,
+  bool reject_tall_vertical)
 {
   GlobalRegistrationResult out_initial;
   bool clipping_enabled = enable_plane_clipping;
@@ -594,9 +595,13 @@ GlobalRegistrationResult compute_global_registration(
     GLOBREG_DBG("Front plane classified as WIDE_HORIZONTAL");
     front_is_square = false;
   } else if (shape == FrontPlaneShape::TALL_VERTICAL) {
-    // e.g. stacked blocks
-    GLOBREG_DBG("FAIL: Front plane classified as TALL_VERTICAL");
-    return out;
+    // e.g. stacked blocks or partial-occlusion artifacts in grasped mode
+    if (reject_tall_vertical) {
+      GLOBREG_DBG("FAIL: Front plane classified as TALL_VERTICAL");
+      return out;
+    }
+    GLOBREG_DBG("Front plane classified as TALL_VERTICAL (accepted by config)");
+    front_is_square = false;
   }
 
   // ----------------------------------------------------------
@@ -711,8 +716,15 @@ LocalRegistrationResult compute_local_registration(
   best.icp.fitness_ = -1.0;
 
   if (!glob.success) {
+    GLOBREG_DBG("LOCAL FAIL: global registration not successful");
     return best;
   }
+
+  GLOBREG_DBG(
+    "LOCAL start: scene_points=" << scene.points_.size() <<
+      " templates=" << templates.size() <<
+      " glob.num_planes=" << glob.num_planes <<
+      " icp_dist=" << icp_dist);
 
   open3d::geometry::PointCloud scene_with_normals = scene;
 
@@ -731,17 +743,19 @@ LocalRegistrationResult compute_local_registration(
   // constexpr double W_GEOM = 1.0;
   constexpr double W_ICP = 0.5;
 
+  size_t templates_tested = 0;
+  size_t templates_skipped_num_faces = 0;
+  size_t icp_attempts = 0;
+  size_t icp_positive = 0;
+
   for (size_t ti = 0; ti < templates.size(); ++ti) {
     const auto & tpl = templates[ti];
 
     if (tpl.num_faces != glob.num_planes) {
-      // std::cout << "tpl.num_faces " << tpl.num_faces << " != glob.num_faces " << glob.num_planes << std::endl;
+      templates_skipped_num_faces++;
       continue;
     }
-    // else
-    // {
-    //   std::cout << "template [" << ti << "] with " << tpl.num_faces << " faces" << std::endl;
-    // }
+    templates_tested++;
 
     Eigen::Matrix4d T_base =
       globalResultToTransform(glob);
@@ -764,10 +778,22 @@ LocalRegistrationResult compute_local_registration(
       // --------------------------------------------------
       auto icp =
         run_icp(scene_with_normals, tpl, T_init, icp_dist);
+      icp_attempts++;
 
       if (icp.fitness_ <= 0.0) {
+        GLOBREG_DBG(
+          "LOCAL reject: tpl=" << tpl.name <<
+            " yaw=" << yaw_deg <<
+            " fitness=" << icp.fitness_ <<
+            " rmse=" << icp.inlier_rmse_);
         continue;
       }
+      icp_positive++;
+      GLOBREG_DBG(
+        "LOCAL candidate: tpl=" << tpl.name <<
+          " yaw=" << yaw_deg <<
+          " fitness=" << icp.fitness_ <<
+          " rmse=" << icp.inlier_rmse_);
 
       // --------------------------------------------------
       // Combined score
@@ -781,8 +807,31 @@ LocalRegistrationResult compute_local_registration(
         best.template_name = tpl.name;
         best.template_index = static_cast<int>(ti);
         best.icp = icp;
+        GLOBREG_DBG(
+          "LOCAL best update: tpl=" << best.template_name <<
+            " idx=" << best.template_index <<
+            " score=" << best.score <<
+            " fitness=" << best.icp.fitness_ <<
+            " rmse=" << best.icp.inlier_rmse_);
       }
     }
+  }
+
+  if (!best.success) {
+    GLOBREG_DBG(
+      "LOCAL FAIL summary: templates_tested=" << templates_tested <<
+        " templates_skipped_num_faces=" << templates_skipped_num_faces <<
+        " icp_attempts=" << icp_attempts <<
+        " icp_positive=" << icp_positive);
+  } else {
+    GLOBREG_DBG(
+      "LOCAL OK summary: templates_tested=" << templates_tested <<
+        " templates_skipped_num_faces=" << templates_skipped_num_faces <<
+        " icp_attempts=" << icp_attempts <<
+        " icp_positive=" << icp_positive <<
+        " winner=" << best.template_name <<
+        " fitness=" << best.icp.fitness_ <<
+        " rmse=" << best.icp.inlier_rmse_);
   }
 
   return best;
