@@ -83,6 +83,14 @@ struct LocalRegistrationResult
   double score = -std::numeric_limits<double>::infinity();
   std::string template_name;
   int template_index = -1;
+  std::string failure_reason;
+  size_t templates_total = 0;
+  size_t templates_tested = 0;
+  size_t templates_skipped_num_faces = 0;
+  size_t icp_attempts = 0;
+  size_t icp_positive = 0;
+  double best_fitness_seen = -std::numeric_limits<double>::infinity();
+  double best_rmse_seen = std::numeric_limits<double>::infinity();
 
   // which hypothesis was chosen
   int front_plane_index = -1;   // index into front_normals

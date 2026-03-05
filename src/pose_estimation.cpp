@@ -714,8 +714,10 @@ LocalRegistrationResult compute_local_registration(
 {
   LocalRegistrationResult best;
   best.icp.fitness_ = -1.0;
+  best.templates_total = templates.size();
 
   if (!glob.success) {
+    best.failure_reason = "global registration not successful";
     GLOBREG_DBG("LOCAL FAIL: global registration not successful");
     return best;
   }
@@ -747,6 +749,8 @@ LocalRegistrationResult compute_local_registration(
   size_t templates_skipped_num_faces = 0;
   size_t icp_attempts = 0;
   size_t icp_positive = 0;
+  double best_fitness_seen = -std::numeric_limits<double>::infinity();
+  double best_rmse_seen = std::numeric_limits<double>::infinity();
 
   for (size_t ti = 0; ti < templates.size(); ++ti) {
     const auto & tpl = templates[ti];
@@ -779,6 +783,12 @@ LocalRegistrationResult compute_local_registration(
       auto icp =
         run_icp(scene_with_normals, tpl, T_init, icp_dist);
       icp_attempts++;
+      if (std::isfinite(icp.fitness_)) {
+        best_fitness_seen = std::max(best_fitness_seen, icp.fitness_);
+      }
+      if (std::isfinite(icp.inlier_rmse_)) {
+        best_rmse_seen = std::min(best_rmse_seen, icp.inlier_rmse_);
+      }
 
       if (icp.fitness_ <= 0.0) {
         GLOBREG_DBG(
@@ -817,13 +827,36 @@ LocalRegistrationResult compute_local_registration(
     }
   }
 
+  best.templates_tested = templates_tested;
+  best.templates_skipped_num_faces = templates_skipped_num_faces;
+  best.icp_attempts = icp_attempts;
+  best.icp_positive = icp_positive;
+  best.best_fitness_seen = best_fitness_seen;
+  best.best_rmse_seen = best_rmse_seen;
+
   if (!best.success) {
+    if (templates.empty()) {
+      best.failure_reason = "no templates available";
+    } else if (templates_tested == 0) {
+      best.failure_reason =
+        "no template matched num_faces (glob.num_planes=" + std::to_string(glob.num_planes) + ")";
+    } else if (icp_attempts == 0) {
+      best.failure_reason = "no ICP attempts executed";
+    } else if (icp_positive == 0) {
+      best.failure_reason = "all ICP attempts returned fitness <= 0";
+    } else {
+      best.failure_reason = "no local registration hypothesis selected";
+    }
     GLOBREG_DBG(
       "LOCAL FAIL summary: templates_tested=" << templates_tested <<
         " templates_skipped_num_faces=" << templates_skipped_num_faces <<
         " icp_attempts=" << icp_attempts <<
-        " icp_positive=" << icp_positive);
+        " icp_positive=" << icp_positive <<
+        " best_fitness_seen=" << best_fitness_seen <<
+        " best_rmse_seen=" << best_rmse_seen <<
+        " reason=" << best.failure_reason);
   } else {
+    best.failure_reason.clear();
     GLOBREG_DBG(
       "LOCAL OK summary: templates_tested=" << templates_tested <<
         " templates_skipped_num_faces=" << templates_skipped_num_faces <<
