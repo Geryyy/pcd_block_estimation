@@ -703,6 +703,22 @@ run_icp(
     TransformationEstimationPointToPlane());
 }
 
+pipelines::registration::RegistrationResult
+run_icp_point_to_point(
+  const geometry::PointCloud & scene,
+  const TemplateData & tpl,
+  const Eigen::Matrix4d & T_init,
+  double icp_dist)
+{
+  return pipelines::registration::RegistrationICP(
+    *tpl.pcd,
+    scene,
+    icp_dist,
+    T_init,
+    pipelines::registration::
+    TransformationEstimationPointToPoint());
+}
+
 // ============================================================
 // LOCAL REGISTRATION
 // ============================================================
@@ -710,7 +726,11 @@ LocalRegistrationResult compute_local_registration(
   const geometry::PointCloud & scene,
   const std::vector<TemplateData> & templates,
   const GlobalRegistrationResult & glob,
-  double icp_dist)
+  double icp_dist,
+  bool relax_num_faces_match,
+  const Eigen::Vector3d * translation_seed_world,
+  const std::vector<double> & icp_dist_multipliers,
+  bool enable_point_to_point_fallback)
 {
   LocalRegistrationResult best;
   best.icp.fitness_ = -1.0;
@@ -726,6 +746,10 @@ LocalRegistrationResult compute_local_registration(
     "LOCAL start: scene_points=" << scene.points_.size() <<
       " templates=" << templates.size() <<
       " glob.num_planes=" << glob.num_planes <<
+      " relax_num_faces_match=" << (relax_num_faces_match ? "true" : "false") <<
+      " use_translation_seed=" << (translation_seed_world ? "true" : "false") <<
+      " p2p_fallback=" << (enable_point_to_point_fallback ? "true" : "false") <<
+      " dist_multipliers=" << icp_dist_multipliers.size() <<
       " icp_dist=" << icp_dist);
 
   open3d::geometry::PointCloud scene_with_normals = scene;
@@ -755,7 +779,7 @@ LocalRegistrationResult compute_local_registration(
   for (size_t ti = 0; ti < templates.size(); ++ti) {
     const auto & tpl = templates[ti];
 
-    if (tpl.num_faces != glob.num_planes) {
+    if (!relax_num_faces_match && tpl.num_faces != glob.num_planes) {
       templates_skipped_num_faces++;
       continue;
     }
@@ -763,6 +787,9 @@ LocalRegistrationResult compute_local_registration(
 
     Eigen::Matrix4d T_base =
       globalResultToTransform(glob);
+    if (translation_seed_world) {
+      T_base.block<3, 1>(0, 3) = *translation_seed_world;
+    }
 
     // test against yaw hypothesis
     for (int yaw_deg = 0; yaw_deg < 360; yaw_deg += 360) {
@@ -780,14 +807,74 @@ LocalRegistrationResult compute_local_registration(
       // --------------------------------------------------
       // ICP refinement
       // --------------------------------------------------
-      auto icp =
-        run_icp(scene_with_normals, tpl, T_init, icp_dist);
-      icp_attempts++;
-      if (std::isfinite(icp.fitness_)) {
-        best_fitness_seen = std::max(best_fitness_seen, icp.fitness_);
-      }
-      if (std::isfinite(icp.inlier_rmse_)) {
-        best_rmse_seen = std::min(best_rmse_seen, icp.inlier_rmse_);
+      pipelines::registration::RegistrationResult icp;
+      icp.fitness_ = -1.0;
+      for (double dist_scale : icp_dist_multipliers) {
+        const double dist = std::max(1e-4, icp_dist * dist_scale);
+        auto icp_p2l = run_icp(scene_with_normals, tpl, T_init, dist);
+        icp_attempts++;
+        if (icp_p2l.fitness_ > icp.fitness_) {
+          icp = icp_p2l;
+        }
+        if (std::isfinite(icp_p2l.fitness_)) {
+          best_fitness_seen = std::max(best_fitness_seen, icp_p2l.fitness_);
+        }
+        if (std::isfinite(icp_p2l.inlier_rmse_)) {
+          best_rmse_seen = std::min(best_rmse_seen, icp_p2l.inlier_rmse_);
+        }
+        if (icp_p2l.fitness_ > 0.0) {
+          GLOBREG_DBG(
+            "LOCAL candidate: tpl=" << tpl.name <<
+              " yaw=" << yaw_deg <<
+              " dist=" << dist <<
+              " method=point_to_plane" <<
+              " fitness=" << icp_p2l.fitness_ <<
+              " rmse=" << icp_p2l.inlier_rmse_);
+          icp_positive++;
+          break;
+        }
+
+        if (!enable_point_to_point_fallback) {
+          continue;
+        }
+
+        auto icp_p2p = run_icp_point_to_point(scene_with_normals, tpl, T_init, dist);
+        icp_attempts++;
+        if (icp_p2p.fitness_ > icp.fitness_) {
+          icp = icp_p2p;
+        }
+        if (std::isfinite(icp_p2p.fitness_)) {
+          best_fitness_seen = std::max(best_fitness_seen, icp_p2p.fitness_);
+        }
+        if (std::isfinite(icp_p2p.inlier_rmse_)) {
+          best_rmse_seen = std::min(best_rmse_seen, icp_p2p.inlier_rmse_);
+        }
+        if (icp_p2p.fitness_ <= 0.0) {
+          continue;
+        }
+
+        auto icp_refined = run_icp(scene_with_normals, tpl, icp_p2p.transformation_, dist);
+        icp_attempts++;
+        if (icp_refined.fitness_ > icp.fitness_) {
+          icp = icp_refined;
+        }
+        if (std::isfinite(icp_refined.fitness_)) {
+          best_fitness_seen = std::max(best_fitness_seen, icp_refined.fitness_);
+        }
+        if (std::isfinite(icp_refined.inlier_rmse_)) {
+          best_rmse_seen = std::min(best_rmse_seen, icp_refined.inlier_rmse_);
+        }
+        if (icp_refined.fitness_ > 0.0) {
+          GLOBREG_DBG(
+            "LOCAL candidate: tpl=" << tpl.name <<
+              " yaw=" << yaw_deg <<
+              " dist=" << dist <<
+              " method=p2p->p2l" <<
+              " fitness=" << icp_refined.fitness_ <<
+              " rmse=" << icp_refined.inlier_rmse_);
+          icp_positive++;
+          break;
+        }
       }
 
       if (icp.fitness_ <= 0.0) {
@@ -798,12 +885,6 @@ LocalRegistrationResult compute_local_registration(
             " rmse=" << icp.inlier_rmse_);
         continue;
       }
-      icp_positive++;
-      GLOBREG_DBG(
-        "LOCAL candidate: tpl=" << tpl.name <<
-          " yaw=" << yaw_deg <<
-          " fitness=" << icp.fitness_ <<
-          " rmse=" << icp.inlier_rmse_);
 
       // --------------------------------------------------
       // Combined score

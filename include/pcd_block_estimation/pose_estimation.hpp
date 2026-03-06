@@ -105,7 +105,11 @@ LocalRegistrationResult compute_local_registration(
   const open3d::geometry::PointCloud & scene,
   const std::vector<TemplateData> & templates,
   const GlobalRegistrationResult & global_registration,
-  double icp_dist
+  double icp_dist,
+  bool relax_num_faces_match = false,
+  const Eigen::Vector3d * translation_seed_world = nullptr,
+  const std::vector<double> & icp_dist_multipliers = std::vector<double>{1.0, 1.5, 2.0},
+  bool enable_point_to_point_fallback = true
 );
 
 // ------------------------------------------------------------
