@@ -10,6 +10,8 @@ using namespace open3d;
 
 #define GLOBREG_DBG(msg) \
   std::cerr << "[globreg][dbg] " << msg << std::endl
+#define LOCREG_DBG(msg) \
+  std::cerr << "[locreg][dbg] " << msg << std::endl
 
 namespace pcd_block
 {
@@ -738,11 +740,11 @@ LocalRegistrationResult compute_local_registration(
 
   if (!glob.success) {
     best.failure_reason = "global registration not successful";
-    GLOBREG_DBG("LOCAL FAIL: global registration not successful");
+    LOCREG_DBG("LOCAL FAIL: global registration not successful");
     return best;
   }
 
-  GLOBREG_DBG(
+  LOCREG_DBG(
     "LOCAL start: scene_points=" << scene.points_.size() <<
       " templates=" << templates.size() <<
       " glob.num_planes=" << glob.num_planes <<
@@ -823,7 +825,7 @@ LocalRegistrationResult compute_local_registration(
           best_rmse_seen = std::min(best_rmse_seen, icp_p2l.inlier_rmse_);
         }
         if (icp_p2l.fitness_ > 0.0) {
-          GLOBREG_DBG(
+          LOCREG_DBG(
             "LOCAL candidate: tpl=" << tpl.name <<
               " yaw=" << yaw_deg <<
               " dist=" << dist <<
@@ -865,7 +867,7 @@ LocalRegistrationResult compute_local_registration(
           best_rmse_seen = std::min(best_rmse_seen, icp_refined.inlier_rmse_);
         }
         if (icp_refined.fitness_ > 0.0) {
-          GLOBREG_DBG(
+          LOCREG_DBG(
             "LOCAL candidate: tpl=" << tpl.name <<
               " yaw=" << yaw_deg <<
               " dist=" << dist <<
@@ -878,7 +880,7 @@ LocalRegistrationResult compute_local_registration(
       }
 
       if (icp.fitness_ <= 0.0) {
-        GLOBREG_DBG(
+        LOCREG_DBG(
           "LOCAL reject: tpl=" << tpl.name <<
             " yaw=" << yaw_deg <<
             " fitness=" << icp.fitness_ <<
@@ -898,7 +900,7 @@ LocalRegistrationResult compute_local_registration(
         best.template_name = tpl.name;
         best.template_index = static_cast<int>(ti);
         best.icp = icp;
-        GLOBREG_DBG(
+        LOCREG_DBG(
           "LOCAL best update: tpl=" << best.template_name <<
             " idx=" << best.template_index <<
             " score=" << best.score <<
@@ -928,7 +930,7 @@ LocalRegistrationResult compute_local_registration(
     } else {
       best.failure_reason = "no local registration hypothesis selected";
     }
-    GLOBREG_DBG(
+    LOCREG_DBG(
       "LOCAL FAIL summary: templates_tested=" << templates_tested <<
         " templates_skipped_num_faces=" << templates_skipped_num_faces <<
         " icp_attempts=" << icp_attempts <<
@@ -938,7 +940,7 @@ LocalRegistrationResult compute_local_registration(
         " reason=" << best.failure_reason);
   } else {
     best.failure_reason.clear();
-    GLOBREG_DBG(
+    LOCREG_DBG(
       "LOCAL OK summary: templates_tested=" << templates_tested <<
         " templates_skipped_num_faces=" << templates_skipped_num_faces <<
         " icp_attempts=" << icp_attempts <<
