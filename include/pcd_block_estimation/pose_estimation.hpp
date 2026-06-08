@@ -55,7 +55,8 @@ struct GlobalRegistrationResult
 GlobalRegistrationResult compute_global_registration(
   const open3d::geometry::PointCloud & scene,
   const Eigen::Vector3d & z_world,
-  double angle_thresh,
+  double angle_thresh_top,
+  double angle_thresh_front,
   int max_planes,
   double dist_thresh,
   int min_inliers,

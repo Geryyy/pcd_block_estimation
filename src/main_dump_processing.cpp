@@ -59,25 +59,29 @@ constexpr int MIN_INLIERS = 100;
 constexpr double ICP_DIST = 0.1;
 
 const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
-constexpr double ANGLE_THRESH =
-    std::cos(30.0 * M_PI / 180.0);
+constexpr double ANGLE_THRESH_TOP =
+  std::cos(30.0 * M_PI / 180.0);
+constexpr double ANGLE_THRESH_FRONT =
+  std::sin(30.0 * M_PI / 180.0);
 constexpr double MAX_PLANE_CENTER_DIST = 0.6; // meters
 
 // ============================================================
 // Helpers
 // ============================================================
-static std::string extract_timestamp(const fs::path &p)
+static std::string extract_timestamp(const fs::path & p)
 {
   const std::string stem = p.stem().string();
   std::vector<std::string> tokens;
   std::stringstream ss(stem);
   std::string item;
 
-  while (std::getline(ss, item, '_'))
+  while (std::getline(ss, item, '_')) {
     tokens.push_back(item);
+  }
 
-  if (tokens.size() < 3)
+  if (tokens.size() < 3) {
     return {};
+  }
 
   return tokens[0] + "_" + tokens[1];
 }
@@ -90,11 +94,11 @@ static Eigen::Matrix4d make_x_offset(double x)
 }
 
 inline void compute_pose_error(
-    const Eigen::Matrix4d &H_global,
-    const Eigen::Matrix4d &H_local,
-    double &translation_error,
-    double &rotation_error_rad,
-    double &rotation_error_deg)
+  const Eigen::Matrix4d & H_global,
+  const Eigen::Matrix4d & H_local,
+  double & translation_error,
+  double & rotation_error_rad,
+  double & rotation_error_deg)
 {
   // --- Translation ---
   const Eigen::Vector3d t_g = H_global.block<3, 1>(0, 3);
@@ -121,25 +125,25 @@ inline void compute_pose_error(
 static Eigen::Vector3d plane_color(int i)
 {
   static const std::vector<Eigen::Vector3d> colors = {
-      {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1, 1, 0}, {1, 0, 1}, {0, 1, 1}};
+    {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1, 1, 0}, {1, 0, 1}, {0, 1, 1}};
   return colors[i % colors.size()];
 }
 
 static std::shared_ptr<geometry::TriangleMesh>
 make_normal_cylinder(
-    const Eigen::Vector3d &origin,
-    const Eigen::Vector3d &normal,
-    const Eigen::Vector3d &color)
+  const Eigen::Vector3d & origin,
+  const Eigen::Vector3d & normal,
+  const Eigen::Vector3d & color)
 {
   auto cyl =
-      geometry::TriangleMesh::CreateCylinder(0.01, 0.3);
+    geometry::TriangleMesh::CreateCylinder(0.01, 0.3);
   cyl->PaintUniformColor(color);
 
   Eigen::Vector3d n = normal.normalized();
   Eigen::Vector3d z(0, 0, 1);
 
   Eigen::Matrix3d R =
-      Eigen::Quaterniond::FromTwoVectors(z, n).toRotationMatrix();
+    Eigen::Quaterniond::FromTwoVectors(z, n).toRotationMatrix();
 
   Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
   T.block<3, 3>(0, 0) = R;
@@ -154,9 +158,9 @@ make_normal_cylinder(
 // GLOBAL visualization
 // ------------------------------------------------------------
 static void visualize_global(
-    const std::shared_ptr<geometry::PointCloud> &cutout,
-    const GlobalRegistrationResult &glob,
-    const std::string &title)
+  const std::shared_ptr<geometry::PointCloud> & cutout,
+  const GlobalRegistrationResult & glob,
+  const std::string & title)
 {
   std::vector<std::shared_ptr<const geometry::Geometry>> geoms;
 
@@ -164,29 +168,29 @@ static void visualize_global(
   bg->PaintUniformColor({0.6, 0.6, 0.6});
   geoms.push_back(bg);
 
-  for (size_t i = 0; i < glob.planes.size(); ++i)
-  {
-    const auto &pc = glob.planes[i].second;
+  for (size_t i = 0; i < glob.planes.size(); ++i) {
+    const auto & pc = glob.planes[i].second;
     Eigen::Vector3d color = plane_color(i);
 
     auto pc_vis =
-        std::make_shared<geometry::PointCloud>(pc);
+      std::make_shared<geometry::PointCloud>(pc);
     pc_vis->PaintUniformColor(color);
     geoms.push_back(pc_vis);
 
     Eigen::Vector3d c = compute_center(pc.points_);
     Eigen::Vector3d n =
-        glob.planes[i].first.head<3>().normalized();
+      glob.planes[i].first.head<3>().normalized();
 
-    if (n.dot(Z_WORLD) < 0)
+    if (n.dot(Z_WORLD) < 0) {
       n = -n;
+    }
 
     geoms.push_back(make_normal_cylinder(c, n, color));
   }
 
   auto glob_transform = globalResultToTransform(glob);
   auto frame =
-      geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+    geometry::TriangleMesh::CreateCoordinateFrame(0.25);
   frame->Transform(glob_transform);
   geoms.push_back(frame);
 
@@ -197,26 +201,26 @@ static void visualize_global(
 // ICP visualization
 // ------------------------------------------------------------
 static void visualize_icp_result(
-    const std::shared_ptr<geometry::PointCloud> &scene,
-    const TemplateData &tpl,
-    const LocalRegistrationResult &result,
-    const std::string &title)
+  const std::shared_ptr<geometry::PointCloud> & scene,
+  const TemplateData & tpl,
+  const LocalRegistrationResult & result,
+  const std::string & title)
 {
   std::vector<std::shared_ptr<const geometry::Geometry>> geoms;
 
   auto scene_vis =
-      std::make_shared<geometry::PointCloud>(*scene);
+    std::make_shared<geometry::PointCloud>(*scene);
   scene_vis->PaintUniformColor({0, 0.8, 0});
   geoms.push_back(scene_vis);
 
   auto tpl_vis =
-      std::make_shared<geometry::PointCloud>(*tpl.pcd);
+    std::make_shared<geometry::PointCloud>(*tpl.pcd);
   tpl_vis->Transform(result.icp.transformation_);
   tpl_vis->PaintUniformColor({1, 0, 0});
   geoms.push_back(tpl_vis);
 
   auto frame =
-      geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+    geometry::TriangleMesh::CreateCoordinateFrame(0.25);
   frame->Transform(result.icp.transformation_);
   geoms.push_back(frame);
 
@@ -224,12 +228,12 @@ static void visualize_icp_result(
 }
 
 static void visualize_debug_pipeline(
-    const std::shared_ptr<geometry::PointCloud> &original,
-    const Eigen::Matrix4d &H_global,
-    const std::shared_ptr<geometry::PointCloud> &icp_scene,
-    const TemplateData &tpl,
-    const LocalRegistrationResult &local,
-    const std::string &title)
+  const std::shared_ptr<geometry::PointCloud> & original,
+  const Eigen::Matrix4d & H_global,
+  const std::shared_ptr<geometry::PointCloud> & icp_scene,
+  const TemplateData & tpl,
+  const LocalRegistrationResult & local,
+  const std::string & title)
 {
   std::vector<std::shared_ptr<const geometry::Geometry>> geoms;
 
@@ -281,14 +285,14 @@ static void visualize_debug_pipeline(
 }
 
 static void visualize_original_only(
-    const std::shared_ptr<geometry::PointCloud> &original,
-    const std::string &title)
+  const std::shared_ptr<geometry::PointCloud> & original,
+  const std::string & title)
 {
   auto pc = std::make_shared<geometry::PointCloud>(*original);
   pc->PaintUniformColor({0.7, 0.7, 0.7});
 
   auto frame =
-      geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+    geometry::TriangleMesh::CreateCoordinateFrame(0.25);
 
   visualization::DrawGeometries({pc, frame}, title, 1200, 900);
 }
@@ -305,40 +309,45 @@ int main()
   YAML::Node calib = YAML::LoadFile(CALIB_YAML);
 
   Eigen::Matrix3d K;
-  for (int i = 0; i < 9; ++i)
+  for (int i = 0; i < 9; ++i) {
     K(i / 3, i % 3) = calib["K"][i].as<double>();
+  }
 
   Eigen::Matrix4d T_P_C = load_T_4x4(CALIB_YAML);
   Eigen::Matrix4d T_cam_lidar = T_P_C.inverse();
 
   Eigen::Matrix4d T_pitch = Eigen::Matrix4d::Identity();
   T_pitch.block<3, 3>(0, 0) =
-      geometry::Geometry3D::GetRotationMatrixFromXYZ(
-          Eigen::Vector3d(-M_PI / 6, 0, 0));
+    geometry::Geometry3D::GetRotationMatrixFromXYZ(
+    Eigen::Vector3d(-M_PI / 6, 0, 0));
 
   // ----------------------------------------------------------
   // Load templates
   // ----------------------------------------------------------
   auto templates = load_templates(TEMPLATE_DIR);
-  if (templates.empty())
+  if (templates.empty()) {
     throw std::runtime_error("No templates loaded");
+  }
 
   // ----------------------------------------------------------
   // Scan dump directory
   // ----------------------------------------------------------
   std::unordered_map<std::string, fs::path> plys, pngs;
 
-  for (const auto &e : fs::directory_iterator(DATA_DIR))
-  {
-    if (!e.is_regular_file())
+  for (const auto & e : fs::directory_iterator(DATA_DIR)) {
+    if (!e.is_regular_file()) {
       continue;
+    }
     auto ts = extract_timestamp(e.path());
-    if (ts.empty())
+    if (ts.empty()) {
       continue;
-    if (e.path().extension() == ".ply")
+    }
+    if (e.path().extension() == ".ply") {
       plys[ts] = e.path();
-    if (e.path().extension() == ".png")
+    }
+    if (e.path().extension() == ".png") {
       pngs[ts] = e.path();
+    }
   }
 
   std::cout << "[INFO] Found "
@@ -348,33 +357,36 @@ int main()
   // ----------------------------------------------------------
   // Main loop
   // ----------------------------------------------------------
-  for (const auto &[ts, ply_path] : plys)
-  {
+  for (const auto &[ts, ply_path] : plys) {
 
-    if (!pngs.count(ts))
+    if (!pngs.count(ts)) {
       continue;
+    }
 
     std::cout << "\n==============================\n";
     std::cout << "[SCENE] timestamp = " << ts << "\n";
 
     cv::Mat mask =
-        cv::imread(pngs[ts].string(), cv::IMREAD_GRAYSCALE);
-    if (mask.empty())
+      cv::imread(pngs[ts].string(), cv::IMREAD_GRAYSCALE);
+    if (mask.empty()) {
       continue;
+    }
 
     auto pcd_raw = std::make_shared<geometry::PointCloud>();
-    if (!io::ReadPointCloud(ply_path.string(), *pcd_raw))
+    if (!io::ReadPointCloud(ply_path.string(), *pcd_raw)) {
       continue;
+    }
 
     auto pts_sel =
-        select_points_by_mask(
-            pcd_raw->points_, mask, K, T_P_C);
+      select_points_by_mask(
+      pcd_raw->points_, mask, K, T_P_C);
 
-    if (pts_sel.empty())
+    if (pts_sel.empty()) {
       continue;
+    }
 
     auto pcd_cutout =
-        std::make_shared<geometry::PointCloud>();
+      std::make_shared<geometry::PointCloud>();
     pcd_cutout->points_ = pts_sel;
 
     pcd_cutout->RemoveStatisticalOutliers(50, 2.0);
@@ -387,26 +399,25 @@ int main()
     // --------------------------------------------------------
     exec_timer.tic();
     auto glob =
-        compute_global_registration(
-            *pcd_cutout,
-            Z_WORLD,
-            ANGLE_THRESH,
-            MAX_PLANES,
-            DIST_THRESH,
-            MIN_INLIERS,
-            MAX_PLANE_CENTER_DIST);
+      compute_global_registration(
+      *pcd_cutout,
+      Z_WORLD,
+      ANGLE_THRESH_TOP,
+      ANGLE_THRESH_FRONT,
+      MAX_PLANES,
+      DIST_THRESH,
+      MIN_INLIERS,
+      MAX_PLANE_CENTER_DIST);
 
     std::cout << "[GLOBAL] Exec.Time: " << exec_timer.toc() / 1e9 << std::endl;
 
-    if (!glob.success)
-    {
+    if (!glob.success) {
       std::cout << "[GLOBAL] ❌ failed\n";
 
-      if (visualize_failed_global)
-      {
+      if (visualize_failed_global) {
         visualize_original_only(
-            pcd_cutout,
-            "GLOBAL FAILED – " + ts);
+          pcd_cutout,
+          "GLOBAL FAILED – " + ts);
       }
 
       continue;
@@ -415,10 +426,9 @@ int main()
     std::cout << "[GLOBAL] num_planes = "
               << glob.num_planes << "\n";
 
-    for (size_t i = 0; i < glob.planes.size(); ++i)
-    {
+    for (size_t i = 0; i < glob.planes.size(); ++i) {
       Eigen::Vector3d n =
-          glob.planes[i].first.head<3>().normalized();
+        glob.planes[i].first.head<3>().normalized();
       double cosz = std::abs(n.dot(Z_WORLD));
       std::cout << "  plane[" << i << "] "
                 << "n=" << n.transpose()
@@ -431,8 +441,7 @@ int main()
     std::cout << "[GLOBAL] top normal = "
               << glob.n_top.transpose() << "\n";
 
-    for (size_t i = 0; i < glob.front_normals.size(); ++i)
-    {
+    for (size_t i = 0; i < glob.front_normals.size(); ++i) {
       std::cout << "[GLOBAL] front[" << i << "] n="
                 << glob.front_normals[i].transpose()
                 << " c="
@@ -440,17 +449,16 @@ int main()
                 << "\n";
     }
 
-    const auto &icp_scene =
-        glob.plane_cloud ? glob.plane_cloud : pcd_cutout;
+    const auto & icp_scene =
+      glob.plane_cloud ? glob.plane_cloud : pcd_cutout;
 
     icp_scene->RemoveStatisticalOutliers(50, 2.0);
 
-    if (MODE == PipelineMode::GLOBAL_ONLY)
-    {
+    if (MODE == PipelineMode::GLOBAL_ONLY) {
       visualize_global(
-          icp_scene,
-          glob,
-          "Global registration – " + ts);
+        icp_scene,
+        glob,
+        "Global registration – " + ts);
       continue;
     }
 
@@ -463,20 +471,18 @@ int main()
     exec_timer.tic();
 
     auto result =
-        compute_local_registration(
-            *icp_scene,
-            templates,
-            glob,
-            ICP_DIST);
+      compute_local_registration(
+      *icp_scene,
+      templates,
+      glob,
+      ICP_DIST);
 
     std::cout << "[LOCAL] Exec.Time: " << exec_timer.toc() / 1e9 << std::endl;
 
-    if (!result.success)
-    {
+    if (!result.success) {
       std::cout << "[RESULT] ❌ no valid ICP result\n";
 
-      if (visualize_failed_local)
-      {
+      if (visualize_failed_local) {
         // show original + global side by side
         std::vector<std::shared_ptr<const geometry::Geometry>> geoms;
 
@@ -497,16 +503,16 @@ int main()
           geoms.push_back(pc);
 
           auto frame =
-              geometry::TriangleMesh::CreateCoordinateFrame(0.25);
+            geometry::TriangleMesh::CreateCoordinateFrame(0.25);
           frame->Transform(T * H_global);
           geoms.push_back(frame);
         }
 
         visualization::DrawGeometries(
-            geoms,
-            "LOCAL FAILED – " + ts,
-            1400,
-            900);
+          geoms,
+          "LOCAL FAILED – " + ts,
+          1400,
+          900);
       }
 
       continue;
@@ -534,25 +540,24 @@ int main()
     double t_err, r_err_rad, r_err_deg;
 
     compute_pose_error(
-        H_global,
-        H_local,
-        t_err,
-        r_err_rad,
-        r_err_deg);
+      H_global,
+      H_local,
+      t_err,
+      r_err_rad,
+      r_err_deg);
 
     std::cout
-        << "translation error: " << t_err << " m\n"
-        << "rotation error:    " << r_err_deg << " deg\n";
+      << "translation error: " << t_err << " m\n"
+      << "rotation error:    " << r_err_deg << " deg\n";
 
-    if (DEBUG_PIPELINE_VISUALIZATION)
-    {
+    if (DEBUG_PIPELINE_VISUALIZATION) {
       visualize_debug_pipeline(
-          pcd_cutout,
-          H_global,
-          icp_scene,
-          templates[result.template_index],
-          result,
-          "DEBUG pipeline – " + ts);
+        pcd_cutout,
+        H_global,
+        icp_scene,
+        templates[result.template_index],
+        result,
+        "DEBUG pipeline – " + ts);
     }
   }
 

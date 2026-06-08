@@ -352,7 +352,8 @@ PlaneSelection select_top_and_front_planes(
   const std::vector<std::pair<Eigen::Vector4d,
   geometry::PointCloud>> & planes,
   const Eigen::Vector3d & z_world,
-  double angle_thresh,
+  double angle_thresh_top,
+  double angle_thresh_front,
   double max_plane_center_dist)
 {
   PlaneSelection sel;
@@ -381,7 +382,7 @@ PlaneSelection select_top_and_front_planes(
     // -----------------------
     // Top plane
     // -----------------------
-    if (!found_top && cos_z > angle_thresh) {
+    if (!found_top && cos_z > angle_thresh_top) {
       sel.n_top = orient_normal_towards(plane, z_world);
       sel.c_top = c;
       found_top = true;
@@ -391,7 +392,7 @@ PlaneSelection select_top_and_front_planes(
     // -----------------------
     // Front plane candidates
     // -----------------------
-    if (cos_z < 0.2) {
+    if (cos_z < angle_thresh_front) {
       fronts.push_back({n_raw, c, pc.points_.size()});
     }
   }
@@ -447,7 +448,8 @@ PlaneSelection select_top_and_front_planes(
 GlobalRegistrationResult compute_global_registration(
   const geometry::PointCloud & scene,
   const Eigen::Vector3d & z_world,
-  double angle_thresh,
+  double angle_thresh_top,
+  double angle_thresh_front,
   int max_planes,
   double dist_thresh,
   int min_inliers,
@@ -488,7 +490,7 @@ GlobalRegistrationResult compute_global_registration(
     // ----------------------------------------------------------
     auto sel_initial = select_top_and_front_planes(
       out_initial.planes, z_world,
-      angle_thresh, max_plane_center_dist);
+      angle_thresh_top, angle_thresh_front, max_plane_center_dist);
 
     if (!sel_initial.success) {
       GLOBREG_DBG("FAIL: initial select_planes");
@@ -557,7 +559,7 @@ GlobalRegistrationResult compute_global_registration(
   // ----------------------------------------------------------
   auto sel = select_top_and_front_planes(
     out.planes, z_world,
-    angle_thresh, max_plane_center_dist);
+    angle_thresh_top, angle_thresh_front, max_plane_center_dist);
 
   if (!sel.success) {
     GLOBREG_DBG("FAIL: select_planes");

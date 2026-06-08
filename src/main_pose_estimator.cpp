@@ -28,7 +28,9 @@ constexpr int MIN_INLIERS = 100;
 constexpr double ICP_DIST = 0.04;
 
 const Eigen::Vector3d Z_WORLD(0.0, -1.0, 0.0);
-constexpr double ANGLE_THRESH =
+constexpr double ANGLE_THRESH_TOP =
+  std::cos(30.0 * M_PI / 180.0);
+constexpr double ANGLE_THRESH_FRONT =
   std::cos(30.0 * M_PI / 180.0);
 
 // ------------------------------------------------------------
@@ -74,7 +76,8 @@ int main()
   GlobalRegistrationResult global_result = compute_global_registration(
     *scene,
     Z_WORLD,
-    ANGLE_THRESH,
+    ANGLE_THRESH_TOP,
+    ANGLE_THRESH_FRONT,
     MAX_PLANES,
     DIST_THRESH,
     MIN_INLIERS
