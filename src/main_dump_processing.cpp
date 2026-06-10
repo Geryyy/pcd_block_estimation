@@ -200,7 +200,7 @@ static void visualize_global(
 // ------------------------------------------------------------
 // ICP visualization
 // ------------------------------------------------------------
-static void visualize_icp_result(
+[[maybe_unused]] static void visualize_icp_result(
   const std::shared_ptr<geometry::PointCloud> & scene,
   const TemplateData & tpl,
   const LocalRegistrationResult & result,

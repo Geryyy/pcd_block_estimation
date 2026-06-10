@@ -9,6 +9,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # ------------------------------------------------------------
 # Dependencies
 # ------------------------------------------------------------
+cmake_policy(SET CMP0072 NEW)
 find_package(Open3D CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)

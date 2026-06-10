@@ -34,7 +34,7 @@ orient_normal_towards(
 }
 
 
-static FrontPlaneShape
+[[maybe_unused]] static FrontPlaneShape
 classify_front_plane_bb(
   const geometry::PointCloud & pc_front,
   const Eigen::Vector3d & c_front,
