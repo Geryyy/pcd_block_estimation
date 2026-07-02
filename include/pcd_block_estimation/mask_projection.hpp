@@ -17,7 +17,7 @@ namespace pcd_block {
  * @param pts   3D points in point cloud frame P
  * @param mask  Binary image mask (H×W), non-zero = valid
  * @param K     Camera intrinsics (3×3)
- * @param T_P_C Extrinsic transform from point cloud frame P → camera frame C
+ * @param T_P_C Extrinsic transform from camera frame C → point cloud frame P
  * @param z_min Minimum depth in camera frame
  *
  * @return Selected points in original point cloud frame P

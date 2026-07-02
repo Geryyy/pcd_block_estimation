@@ -28,7 +28,7 @@ select_points_by_mask(
     const int H = mask.rows;
     const int W = mask.cols;
 
-    // Inverse: P → C for projection
+    // Invert C -> P calibration to project point-cloud points into the camera.
     Eigen::Matrix4d T_C_P = T_P_C.inverse();
     Eigen::Matrix3d R = T_C_P.block<3,3>(0,0);
     Eigen::Vector3d t = T_C_P.block<3,1>(0,3);
