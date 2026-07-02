@@ -5,6 +5,7 @@
 #include <Eigen/Dense>
 #include <iostream>
 #include <algorithm>
+#include <limits>
 
 using namespace open3d;
 
@@ -345,6 +346,9 @@ struct PlaneSelection
 {
   Eigen::Vector3d n_top, c_top;
   Eigen::Vector3d n_front, c_front;
+  size_t top_index = 0;
+  size_t front_index = 0;
+  double score = -std::numeric_limits<double>::infinity();
   bool success = false;
 };
 
@@ -358,46 +362,48 @@ PlaneSelection select_top_and_front_planes(
 {
   PlaneSelection sel;
 
-  bool found_top = false;
-
   struct Candidate
   {
+    size_t index;
     Eigen::Vector3d n_raw;
     Eigen::Vector3d c;
     size_t support;
+    double cos_z;
   };
 
+  std::vector<Candidate> tops;
   std::vector<Candidate> fronts;
+  size_t max_support = 1;
 
   // ----------------------------------------------------------
   // Classify planes
   // ----------------------------------------------------------
-  for (const auto &[plane, pc] : planes) {
+  for (size_t i = 0; i < planes.size(); ++i) {
+    const auto &[plane, pc] = planes[i];
 
     Eigen::Vector3d n_raw = plane.head<3>().normalized();
     Eigen::Vector3d c = compute_center(pc);
 
     double cos_z = std::abs(n_raw.dot(z_world));
+    const size_t support = pc.points_.size();
+    max_support = std::max(max_support, support);
 
     // -----------------------
     // Top plane
     // -----------------------
-    if (!found_top && cos_z > angle_thresh_top) {
-      sel.n_top = orient_normal_towards(plane, z_world);
-      sel.c_top = c;
-      found_top = true;
-      continue;
+    if (cos_z > angle_thresh_top) {
+      tops.push_back({i, n_raw, c, support, cos_z});
     }
 
     // -----------------------
     // Front plane candidates
     // -----------------------
     if (cos_z < angle_thresh_front) {
-      fronts.push_back({n_raw, c, pc.points_.size()});
+      fronts.push_back({i, n_raw, c, support, cos_z});
     }
   }
 
-  if (!found_top) {
+  if (tops.empty()) {
     GLOBREG_DBG("No top plane candidate found");
     return sel;
   }
@@ -408,34 +414,70 @@ PlaneSelection select_top_and_front_planes(
   }
 
   // ----------------------------------------------------------
-  // Sort front candidates by support
+  // Score every plausible top/front pair. This is intentionally simple:
+  // prefer well-aligned planes, the upper horizontal plane, nearby centers,
+  // and enough support, without letting support dominate geometry.
   // ----------------------------------------------------------
-  std::sort(
-    fronts.begin(), fronts.end(),
-    [](const auto & a, const auto & b)
-    {
-      return a.support > b.support;
-    });
+  double min_top_height = std::numeric_limits<double>::infinity();
+  double max_top_height = -std::numeric_limits<double>::infinity();
+  for (const auto & top : tops) {
+    const double height = top.c.dot(z_world);
+    min_top_height = std::min(min_top_height, height);
+    max_top_height = std::max(max_top_height, height);
+  }
+  const double height_span = std::max(1e-6, max_top_height - min_top_height);
 
-  // ----------------------------------------------------------
-  // Distance gating + orientation
-  // ----------------------------------------------------------
-  for (const auto & fc : fronts) {
+  for (const auto & top : tops) {
+    for (const auto & front : fronts) {
+      const double center_dist = (front.c - top.c).norm();
+      if (center_dist >= max_plane_center_dist) {
+        continue;
+      }
 
-    if ((fc.c - sel.c_top).norm() < max_plane_center_dist) {
+      const double top_height_score =
+        (top.c.dot(z_world) - min_top_height) / height_span;
+      const double distance_score =
+        1.0 - std::clamp(center_dist / max_plane_center_dist, 0.0, 1.0);
+      const double support_score =
+        static_cast<double>(top.support + front.support) /
+        static_cast<double>(2 * max_support);
+      const double top_alignment = top.cos_z;
+      const double front_alignment = 1.0 - front.cos_z;
+      const double score =
+        2.0 * top_alignment +
+        2.0 * front_alignment +
+        1.0 * top_height_score +
+        0.5 * distance_score +
+        0.5 * support_score;
+
+      if (score <= sel.score) {
+        continue;
+      }
+
+      sel.n_top = orient_normal_towards(planes[top.index].first, z_world);
+      sel.c_top = top.c;
 
       // Vector from plane center towards sensor (origin)
-      Eigen::Vector3d to_sensor = -fc.c.normalized();
+      Eigen::Vector3d to_sensor = -front.c.normalized();
 
       sel.n_front =
-        (fc.n_raw.dot(to_sensor) < 0.0) ?
-        -fc.n_raw :
-        fc.n_raw;
+        (front.n_raw.dot(to_sensor) < 0.0) ?
+        -front.n_raw :
+        front.n_raw;
 
-      sel.c_front = fc.c;
+      sel.c_front = front.c;
+      sel.top_index = top.index;
+      sel.front_index = front.index;
+      sel.score = score;
       sel.success = true;
-      return sel;
     }
+  }
+
+  if (sel.success) {
+    GLOBREG_DBG(
+      "Selected plane pair top_idx=" << sel.top_index
+                                     << " front_idx=" << sel.front_index
+                                     << " score=" << sel.score);
   }
 
   return sel;
@@ -518,17 +560,22 @@ GlobalRegistrationResult compute_global_registration(
       FRONT_CLIP_MARGIN,
       TOP_CLIP_MARGIN);
 
-    if (clipped->points_.size() > 50) {
+    const size_t min_clipped_points =
+      std::max<size_t>(50, static_cast<size_t>(min_inliers));
+    if (clipped->points_.size() >= min_clipped_points) {
       GLOBREG_DBG(
         "Clipping removed "
           << scene.points_.size() - clipped->points_.size()
           << " points");
+      scene_filtered = *clipped;
 
     } else {
-      GLOBREG_DBG("Clipping skipped (too few points left)");
+      GLOBREG_DBG(
+        "Clipping skipped (too few points left: "
+          << clipped->points_.size()
+          << " < " << min_clipped_points << ")");
+      scene_filtered = scene;
     }
-
-    scene_filtered = *clipped;
   } else {
     scene_filtered = scene;
   }
@@ -570,24 +617,16 @@ GlobalRegistrationResult compute_global_registration(
   out.c_top = sel.c_top;
   out.front_normals = {sel.n_front};
   out.front_centers = {sel.c_front};
+  out.num_planes = (sel.front_index == sel.top_index) ? 1 : 2;
 
 
-  const geometry::PointCloud * pc_front = nullptr;
-
-  for (const auto &[plane, pc] : out.planes) {
-    if ((compute_center(pc) - sel.c_front).norm() < 1e-6) {
-      pc_front = &pc;
-      break;
-    }
-  }
-
-  if (!pc_front) {
+  if (sel.top_index >= out.planes.size() || sel.front_index >= out.planes.size()) {
     GLOBREG_DBG("FAIL: no front plane cloud found");
     return out;
   }
 
   FrontPlaneShape shape =
-    classify_front_plane_pca(*pc_front, sel.c_front, sel.n_front);
+    classify_front_plane_pca(out.planes[sel.front_index].second, sel.c_front, sel.n_front);
 
   bool front_is_square;
 
@@ -629,8 +668,9 @@ GlobalRegistrationResult compute_global_registration(
   out.plane_cloud =
     std::make_shared<geometry::PointCloud>();
 
-  for (const auto &[plane, pc] : out.planes) {
-    *out.plane_cloud += pc;
+  *out.plane_cloud += out.planes[sel.top_index].second;
+  if (sel.front_index != sel.top_index) {
+    *out.plane_cloud += out.planes[sel.front_index].second;
   }
 
   if (out.plane_cloud->points_.empty()) {
@@ -644,7 +684,8 @@ GlobalRegistrationResult compute_global_registration(
   // Success summary
   // ----------------------------------------------------------
   GLOBREG_DBG(
-    "OK: planes=" << out.num_planes
+    "OK: selected_planes=" << out.num_planes
+                  << " extracted_planes=" << out.planes.size()
                   << " front=" << (front_is_square ? "square" : "rect"));
 
   return out;
